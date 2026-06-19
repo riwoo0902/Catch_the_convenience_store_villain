@@ -1,0 +1,14 @@
+fileFormatVersion: 2
+guid: 910ab69de9843074f9bdf35e85cc5bb9
+PrefabImporter:
+  externalObjects: {}
+  userData: 
+  assetBundleName: 
+  assetBundleVariant: 
+AssetOrigin:
+  serializedVersion: 1
+  productId: 198243
+  packageName: Anime Convenience Store
+  packageVersion: 1.0
+  assetPath: Assets/convenienceStore/prefabs/convenienceStore_FBX.prefab
+  uploadId: 440697
