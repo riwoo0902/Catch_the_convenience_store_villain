@@ -14,6 +14,7 @@ namespace Player.FSM
         {
             base.Enter(transitionDuration, layerIndex);
             _player.PlayerInput.OnMovementChange += HandleMovementChange;
+            Debug.Log(_controlMovement + "입니다");
             _controlMovement.SetMovementDirection(Vector2.zero);
         }
 

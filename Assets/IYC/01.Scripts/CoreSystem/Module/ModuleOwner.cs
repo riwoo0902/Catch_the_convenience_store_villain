@@ -27,7 +27,7 @@ namespace IYC._01.Scripts.CoreSystem.Module
 
         protected virtual void AfterInitializeModules()
         {
-            foreach (IAfterInitModule afterModule in modules.Values)
+            foreach (IAfterInitModule afterModule in modules.Values.Where(module => module is IAfterInitModule))
             {
                 afterModule.AfterInit();
             }
@@ -39,14 +39,14 @@ namespace IYC._01.Scripts.CoreSystem.Module
             {
                 return (T)module;
             }
-            
+
             IModule findedModule = modules.Values.FirstOrDefault();
-            
-            if(findedModule is T castedModule)
+
+            if (findedModule is T castedModule)
             {
                 return castedModule;
             }
-            
+
             return default;
         }
     }

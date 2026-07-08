@@ -1,0 +1,8 @@
+<ui:UXML xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xmlns:ui="UnityEngine.UIElements" xmlns:uie="UnityEditor.UIElements" noNamespaceSchemaLocation="../../../../../UIElementsSchema/UIElements.xsd" editor-extension-mode="True">
+    <ui:VisualElement name="Container" style="flex-grow: 1;">
+        <ui:TextField label="State name" name="StateName" binding-path="stateName"/>
+        <ui:DropdownField label="Class Name" name="ClassNameDropdown" binding-path="className"/>
+        <ui:IntegerField label="Asset index" value="42" name="AssetIndexField" binding-path="assetIndex"/>
+        <uie:ObjectField label="Anim param" name="StateParamField" binding-path="stateParam" type="YKJ.CoreSystem.AnimationSystem.AnimParamSO, Assembly-CSharp"/>
+    </ui:VisualElement>
+</ui:UXML>

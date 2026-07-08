@@ -1,102 +1,101 @@
-﻿using System.Net.NetworkInformation;
-using CoreSystem.DataSystem;
-using CoreSystem.EffectSystem;
-using IYC._01.Scripts.CoreSystem.Module;
+﻿using IYC._01.Scripts.CoreSystem.Module;
+using Player;
 using UnityEngine;
 
-namespace Player
+namespace YKJ.Player
 {
-    public class PlayerMovement : MonoBehaviour, IModule, IControlMovement, IAfterInitModule
+    public class PlayerMovement : MonoBehaviour, IModule, IControlMovement
     {
-        [SerializeField] private float moveSpeed = 8f, gravity = -9.8f;
-        [SerializeField] private AssetNameSO footStepEffect;
-        
-        private Vector3 _velocity;
+        [Header("Move")]
+        [SerializeField] private float moveSpeed = 6f;
+        [SerializeField] private float gravity = -15f;
+        [SerializeField] private float rotationSmoothTime = 0.12f;
+
+        [Header("Camera")]
+        [SerializeField] private Transform cameraTarget;
+
+        private CharacterController _controller;
+        private PlayerController _owner;
+
+        private float _rotationVelocity;
+        private float _targetRotation;
         private float _verticalVelocity;
-        private Vector3 _movementDirection;
-        private CharacterController _characterController;
-        private ModuleOwner _owner;
-        private VfxModule _vfxModule;
-        private Vector3 _autoVelocity;
+
+
+        private Vector3 _velocity;
+        private Vector3 _moveInput;
 
         public bool CanManualMove { get; set; } = true;
-        public Vector3 Velocity => _velocity;
-        public bool IsGround => _characterController.isGrounded;
+        public bool IsGround => _controller.isGrounded;
 
         public void Init(ModuleOwner owner)
         {
-            _owner = owner;
-            _characterController = owner.GetComponent<CharacterController>();
-            _vfxModule = owner.GetModule<VfxModule>();
-        }
-        
-        public void AfterInit()
-        {
-            _vfxModule?.StopVfx(footStepEffect.AssetHash);
+            _owner = owner as PlayerController;
+            _controller = owner.GetComponent<CharacterController>();
+
+
         }
 
-        public void SetMovementVelocity(Vector3 velocity)
+        private void Start()
         {
-            _autoVelocity = velocity;
+            Cursor.lockState = CursorLockMode.Locked;
         }
 
         public void SetMovementDirection(Vector2 movementInput)
         {
-            Vector3 newMovement = new Vector3(movementInput.x, 0, movementInput.y).normalized;
-            if (_vfxModule != null)
-            {
-                if(newMovement.magnitude > 0.01f && _movementDirection.magnitude <= 0.01f)
-                    _vfxModule.PlayVfx(footStepEffect.AssetHash);
-                else if(newMovement.magnitude <= 0.01f && _movementDirection.magnitude > 0.01f)
-                    _vfxModule.StopVfx(footStepEffect.AssetHash);
-            }
-            _movementDirection = newMovement;
+            _moveInput = new Vector3(movementInput.x, 0.0f, movementInput.y).normalized;
         }
 
-        public void RotateTo(Vector3 direction)
-        {
-            if (direction.magnitude < Mathf.Epsilon) return;
-            direction.y = 0;
-            _owner.transform.forward = direction.normalized;
-        }
 
-        private void FixedUpdate()
+        private void Update()
         {
-            CalculateMovement();
-            ApplyGravity();
             Move();
+            ApplyGravity();
         }
-
-        private void CalculateMovement()
+        private void Move()
         {
-            if(CanManualMove)
-                _velocity = Quaternion.Euler(0, -45f, 0) * _movementDirection;
-            else 
-                _velocity = _autoVelocity;
-            
-            _velocity *= moveSpeed * Time.fixedDeltaTime;
-            if (_velocity.sqrMagnitude > 0)
-            {
-                float rotationSpeed = 8f;
-                Quaternion targetRotation = Quaternion.LookRotation(_velocity);
-                _owner.transform.rotation = Quaternion.Lerp(_owner.transform.rotation,
-                                targetRotation, rotationSpeed * Time.fixedDeltaTime);
-            }
-        }
 
+            Vector3 moveDir = Vector3.zero;
+
+            if (_moveInput != Vector3.zero)
+            {
+                _targetRotation = Mathf.Atan2(_moveInput.x, _moveInput.z) * Mathf.Rad2Deg + cameraTarget.eulerAngles.y;
+
+                float rotation = Mathf.SmoothDampAngle(
+                    _owner.transform.eulerAngles.y,
+                    _targetRotation,
+                    ref _rotationVelocity,
+                    rotationSmoothTime
+                );
+
+                _owner.transform.rotation = Quaternion.Euler(0.0f, rotation, 0.0f);
+
+                moveDir = Quaternion.Euler(0.0f, _targetRotation, 0.0f) * Vector3.forward;
+            }
+
+
+            _velocity = moveDir.normalized * moveSpeed + Vector3.up * _verticalVelocity;
+
+            _controller.Move(_velocity * Time.deltaTime);
+        }
         private void ApplyGravity()
         {
             if (IsGround && _verticalVelocity < 0)
                 _verticalVelocity = -0.03f;
             else
                 _verticalVelocity += gravity * Time.fixedDeltaTime;
-            
+
             _velocity.y = _verticalVelocity;
         }
 
-        private void Move()
+        public void SetMovementVelocity(Vector3 velocity)
         {
-            _characterController.Move(_velocity);
+
+        }
+
+        public void RotateTo(Vector3 direction)
+        {
+
         }
     }
 }

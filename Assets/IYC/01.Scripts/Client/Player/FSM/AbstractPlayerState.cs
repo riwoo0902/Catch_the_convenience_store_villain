@@ -1,5 +1,6 @@
 ﻿using Agents;
 using Agents.FSM;
+using UnityEngine;
 
 namespace Player.FSM
 {
@@ -12,7 +13,8 @@ namespace Player.FSM
         protected AbstractPlayerState(Agent agent, int stateClipHash) : base(agent, stateClipHash)
         {
             _player = agent as PlayerController;
-            _controlMovement = agent.GetModule<IControlMovement>();
+            Debug.Log(agent.GetComponentInChildren<IControlMovement>());
+            _controlMovement = agent.GetComponentInChildren<IControlMovement>();
         }
     }
 }

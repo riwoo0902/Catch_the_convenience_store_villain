@@ -1,6 +1,5 @@
 ﻿using System;
 using UnityEngine;
-using Controls;
 using UnityEngine.InputSystem;
 
 namespace Player
@@ -14,6 +13,9 @@ namespace Player
         
         [SerializeField] private LayerMask whatIsGround;
         private Controls.Controls _controls;
+
+
+        public Vector2 LookDir { get; private set; }
 
         private Vector3 _worldMousePosition;
         private Vector2 _screenMousePosition;
@@ -79,6 +81,11 @@ namespace Player
                 _worldMousePosition = hit.point;
             }
             return _worldMousePosition;
+        }
+
+        public void OnLook(InputAction.CallbackContext context)
+        {
+            LookDir = context.ReadValue<Vector2>();
         }
     }
 }
