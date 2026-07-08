@@ -314,10 +314,25 @@ PrefabInstance:
       propertyPath: m_Name
       value: Avatar
       objectReference: {fileID: 0}
+    - target: {fileID: 5866666021909216657, guid: 00e1abfff7f14bb45ab7e57daee609cc, type: 3}
+      propertyPath: m_Controller
+      value: 
+      objectReference: {fileID: 9100000, guid: f425eaff126c4a94ea87dbc263a638ff, type: 2}
+    - target: {fileID: 5866666021909216657, guid: 00e1abfff7f14bb45ab7e57daee609cc, type: 3}
+      propertyPath: m_WarningMessage
+      value: 
+      objectReference: {fileID: 0}
+    - target: {fileID: 5866666021909216657, guid: 00e1abfff7f14bb45ab7e57daee609cc, type: 3}
+      propertyPath: m_ApplyRootMotion
+      value: 0
+      objectReference: {fileID: 0}
     m_RemovedComponents: []
     m_RemovedGameObjects: []
     m_AddedGameObjects: []
-    m_AddedComponents: []
+    m_AddedComponents:
+    - targetCorrespondingSourceObject: {fileID: 919132149155446097, guid: 00e1abfff7f14bb45ab7e57daee609cc, type: 3}
+      insertIndex: -1
+      addedObject: {fileID: 692465655}
   m_SourcePrefab: {fileID: 100100000, guid: 00e1abfff7f14bb45ab7e57daee609cc, type: 3}
 --- !u!4 &239155467 stripped
 Transform:
@@ -901,6 +916,23 @@ MonoBehaviour:
   m_ShadowLayerMask: 1
   m_RenderingLayers: 1
   m_ShadowRenderingLayers: 1
+--- !u!1 &692465653 stripped
+GameObject:
+  m_CorrespondingSourceObject: {fileID: 919132149155446097, guid: 00e1abfff7f14bb45ab7e57daee609cc, type: 3}
+  m_PrefabInstance: {fileID: 239155466}
+  m_PrefabAsset: {fileID: 0}
+--- !u!114 &692465655
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 692465653}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: e46de296976345d68ee7f15e2172fd56, type: 3}
+  m_Name: 
+  m_EditorClassIdentifier: Client::Agents.AgentRenderer
 --- !u!1 &770108029
 GameObject:
   m_ObjectHideFlags: 0

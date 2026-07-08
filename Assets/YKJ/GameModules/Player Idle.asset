@@ -12,7 +12,7 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: b98b9fbffa6041868189bb726dfb3f76, type: 3}
   m_Name: Player Idle
   m_EditorClassIdentifier: Client::Agents.FSM.StateSO
-  stateName: 
+  stateName: Idle
   className: Player.FSM.PlayerIdleState
   assetIndex: 0
-  stateParam: {fileID: 0}
+  stateParam: {fileID: 11400000, guid: 40023ec8a5799fe41be5386f30753f51, type: 2}
