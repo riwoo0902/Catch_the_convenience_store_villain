@@ -1,6 +1,6 @@
 ﻿using Agents;
 
-namespace Lrw.Script.Enemy
+namespace Lrw.Script.EnemySystem.Enemy
 {
     public abstract class Enemy : Agent
     {
