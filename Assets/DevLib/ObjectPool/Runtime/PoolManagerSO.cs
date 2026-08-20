@@ -3,7 +3,7 @@ using UnityEngine;
 
 namespace DevLib.ObjectPool.Runtime
 {
-    [CreateAssetMenu(fileName = "PoolManager", menuName = "Lib/Object Pool/PoolManager", order = 0)]
+    [CreateAssetMenu(fileName = "PoolManager", menuName = "Object Pool/PoolManager", order = 0)]
     public class PoolManagerSO : ScriptableObject
     {
         public List<PoolItemSO> itemList = new();

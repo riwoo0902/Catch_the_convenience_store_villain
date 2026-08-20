@@ -781,6 +781,51 @@ Transform:
   m_CorrespondingSourceObject: {fileID: 9213515351550093332, guid: 1d27a0f2788c53a4eb08f61bdfe302ed, type: 3}
   m_PrefabInstance: {fileID: 964909706}
   m_PrefabAsset: {fileID: 0}
+--- !u!1 &1013740801
+GameObject:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  serializedVersion: 6
+  m_Component:
+  - component: {fileID: 1013740803}
+  - component: {fileID: 1013740802}
+  m_Layer: 0
+  m_Name: poolManager
+  m_TagString: Untagged
+  m_Icon: {fileID: 0}
+  m_NavMeshLayer: 0
+  m_StaticEditorFlags: 0
+  m_IsActive: 1
+--- !u!114 &1013740802
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 1013740801}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: 7d93f16746cf460499ae9860631b58e2, type: 3}
+  m_Name: 
+  m_EditorClassIdentifier: PoolRuntime::DevLib.ObjectPool.Runtime.PoolInitializer
+  <PoolManager>k__BackingField: {fileID: 11400000, guid: 494441d97ec99be49a2f3b3b3102d058, type: 2}
+--- !u!4 &1013740803
+Transform:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 1013740801}
+  serializedVersion: 2
+  m_LocalRotation: {x: 0, y: 0, z: 0, w: 1}
+  m_LocalPosition: {x: 907.65906, y: -99.65451, z: -1352.2418}
+  m_LocalScale: {x: 1, y: 1, z: 1}
+  m_ConstrainProportionsScale: 0
+  m_Children: []
+  m_Father: {fileID: 0}
+  m_LocalEulerAnglesHint: {x: 0, y: 0, z: 0}
 --- !u!1001 &1177434609
 PrefabInstance:
   m_ObjectHideFlags: 0
@@ -4081,3 +4126,4 @@ SceneRoots:
   - {fileID: 2110325360}
   - {fileID: 261954493}
   - {fileID: 1616481488}
+  - {fileID: 1013740803}

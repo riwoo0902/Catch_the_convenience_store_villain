@@ -2,7 +2,7 @@
 
 namespace DevLib.ObjectPool.Runtime
 {
-    [CreateAssetMenu(fileName = "Pool Item", menuName = "Lib/Object Pool/Pool Item", order = 10)]
+    [CreateAssetMenu(fileName = "Pool Item", menuName = "Object Pool/Pool Item", order = 10)]
     public class PoolItemSO : ScriptableObject
     {
         public string poolingName;
