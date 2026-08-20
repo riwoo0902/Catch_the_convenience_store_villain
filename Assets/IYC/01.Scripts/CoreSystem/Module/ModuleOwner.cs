@@ -40,7 +40,7 @@ namespace IYC._01.Scripts.CoreSystem.Module
                 return (T)module;
             }
 
-            IModule findedModule = modules.Values.FirstOrDefault();
+            IModule findedModule = modules.Values.FirstOrDefault(module => module is T);
 
             if (findedModule is T castedModule)
             {

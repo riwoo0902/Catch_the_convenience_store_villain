@@ -10,9 +10,9 @@ MonoBehaviour:
   m_Enabled: 1
   m_EditorHideFlags: 0
   m_Script: {fileID: 11500000, guid: b98b9fbffa6041868189bb726dfb3f76, type: 3}
-  m_Name: Player Idle
+  m_Name: Player Fall
   m_EditorClassIdentifier: Client::Agents.FSM.StateSO
-  stateName: Idle
-  className: Player.FSM.PlayerIdleState
-  assetIndex: 0
-  stateParam: {fileID: 11400000, guid: 3484a3647242de844ae702b9e88b7285, type: 2}
+  stateName: Fall
+  className: Client.PlayerFallState
+  assetIndex: 3
+  stateParam: {fileID: 11400000, guid: 5bff6b7085e683e4a800afe52f9c0b94, type: 2}

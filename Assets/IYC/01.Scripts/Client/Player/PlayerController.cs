@@ -10,13 +10,21 @@ namespace Player
     {
         [field: SerializeField] public PlayerInputSO PlayerInput { get; private set; }
         [SerializeField] private StateListSO playerStates;
-        
+
         private StateMachine _stateMachine;
 
         protected override void InitializeModules()
         {
             base.InitializeModules();
             _stateMachine = new StateMachine(this, playerStates.states);
+
+            PlayerInput.OnJumpKeyPressed += PlayerInput_OnJumpKeyPressed;
+        }
+
+        private void PlayerInput_OnJumpKeyPressed()
+        {
+            Debug.Log("Jump Key Pressed");
+            ChangeState(PlayerState.JUMP, transitionDuration: 0);
         }
 
         private void Start()
@@ -28,7 +36,7 @@ namespace Player
         {
             _stateMachine.UpdateMachine();
         }
-        
+
         public void ChangeState(PlayerState newState, float transitionDuration)
             => _stateMachine.ChangeState((int)newState, transitionDuration);
     }
