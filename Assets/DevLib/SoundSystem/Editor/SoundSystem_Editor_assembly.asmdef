@@ -1,11 +1,12 @@
 {
-    "name": "SoundSystem_Assembly",
+    "name": "SoundSystem_Editor_assembly",
     "rootNamespace": "",
     "references": [
-        "GUID:5643aeb9fea9f4e419f706b762fabe14",
-        "GUID:5deb6202186a87c41862a5618784ba1d"
+        "GUID:4490b2e80ff23ba4ab2c15fca8e4bc35"
     ],
-    "includePlatforms": [],
+    "includePlatforms": [
+        "Editor"
+    ],
     "excludePlatforms": [],
     "allowUnsafeCode": false,
     "overrideReferences": false,

@@ -45,13 +45,6 @@ namespace Lrw.Script.UI
         }
 
         private void Invoke() => OnClick?.Invoke();
-
-
-        private void OnValidate()
-        {
-        
-            
-        }
         
     }
 }

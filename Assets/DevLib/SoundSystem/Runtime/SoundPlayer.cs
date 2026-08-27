@@ -1,11 +1,11 @@
-﻿using System;
+using System;
 using System.Threading.Tasks;
 using DevLib.ObjectPool.Runtime;
 using UnityEngine;
 using UnityEngine.Audio;
 using Random = UnityEngine.Random;
 
-namespace DevLib.SoundSystem
+namespace DevLib.SoundSystem.Runtime
 {
     [RequireComponent(typeof(AudioSource))]
     public class SoundPlayer : PoolableMono
@@ -14,36 +14,34 @@ namespace DevLib.SoundSystem
         [SerializeField] private AudioMixerGroup musicGroup;
         
         private AudioSource _audioSource;
-        
-        public event Action<SoundPlayer> OnSoundFinished;
+        public event Action<SoundPlayer> OnPlayFinished;
 
         private void Awake()
         {
             _audioSource = GetComponent<AudioSource>();
+            
         }
 
-        public void PlaySound(SoundClipSo clipData)
+        public void PlaySound(SoundClipSO clipData)
         {
-            if (clipData.audioType == AudioTypes.Sfx)
+            _audioSource.outputAudioMixerGroup = clipData.audioType switch
             {
-                _audioSource.outputAudioMixerGroup = sfxGroup;
-            }
-            else if (clipData.audioType == AudioTypes.Music)
-            {
-                _audioSource.outputAudioMixerGroup = musicGroup;
-            }
-
+                AudioType.Sfx => sfxGroup,
+                AudioType.Music => musicGroup,
+            };
             _audioSource.volume = clipData.volume;
             _audioSource.pitch = clipData.pitch;
+
             if (clipData.randomizePitch)
             {
-                _audioSource.pitch += Random.Range(-clipData.randomPitchModifier, clipData.randomPitchModifier);
+                _audioSource.pitch = Random.Range(-clipData.randomPitchModifier,clipData.randomPitchModifier);
             }
+            
             _audioSource.clip = clipData.clip;
             _audioSource.loop = clipData.loop;
-
+            
             float startTime = clipData.startTime;
-            float endTime   = clipData.endTime > startTime ? clipData.endTime : clipData.clip.length;
+            float endTime = clipData.endTime > startTime ? clipData.endTime : clipData.clip.length;
 
             _audioSource.timeSamples = Mathf.RoundToInt(startTime * clipData.clip.frequency);
             _audioSource.Play();
@@ -54,11 +52,12 @@ namespace DevLib.SoundSystem
                 _ = DisableSoundTimer(duration + 0.2f);
             }
         }
-        private async Task DisableSoundTimer(float time)
+
+        private async Task DisableSoundTimer(float duration)
         {
-            await Awaitable.WaitForSecondsAsync(time);
+            await Awaitable.WaitForSecondsAsync(duration);
             _audioSource.Stop();
-            OnSoundFinished?.Invoke(this);
+            OnPlayFinished?.Invoke(this);
         }
 
         public void ForceStopSound()
@@ -66,5 +65,10 @@ namespace DevLib.SoundSystem
             _audioSource.Stop();
         }
 
+        public override void ResetItem()
+        {
+            OnPlayFinished = null;
+        }
+        
     }
 }

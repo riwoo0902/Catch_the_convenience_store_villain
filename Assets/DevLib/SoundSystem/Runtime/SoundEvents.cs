@@ -1,21 +1,21 @@
-﻿using DevLib.EventChannelSystem;
+using DevLib.EventChannelSystem;
 using UnityEngine;
 
-namespace DevLib.SoundSystem
+namespace DevLib.SoundSystem.Runtime
 {
     public static class SoundEvents
     {
-        public static readonly PlaySoundEvent PlaySoundEvent = new PlaySoundEvent();
-        public static readonly StopSoundEvent StopSoundEvent = new StopSoundEvent();
+        public static readonly PlaySoundEvents PlaySound = new();
+        public static readonly StopSoundEvent StopSound = new();
     }
 
-    public class PlaySoundEvent : GameEvent
+    public class PlaySoundEvents : GameEvent
     {
         public Vector3 Position;
-        public SoundClipSo ClipData;
+        public SoundClipSO ClipData;
         public int ChannelNumber;
 
-        public PlaySoundEvent Init(Vector3 position, SoundClipSo clipData, int channelNumber = 0)
+        public PlaySoundEvents Init(Vector3 position, SoundClipSO clipData, int channelNumber = 0)
         {
             Position = position;
             ClipData = clipData;
@@ -34,5 +34,4 @@ namespace DevLib.SoundSystem
             return this;
         }
     }
-
 }
