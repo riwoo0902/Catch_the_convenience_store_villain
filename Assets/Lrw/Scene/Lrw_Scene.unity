@@ -2850,7 +2850,7 @@ RectTransform:
   m_LocalEulerAnglesHint: {x: 0, y: 0, z: 0}
   m_AnchorMin: {x: 1, y: 0.5}
   m_AnchorMax: {x: 1, y: 0.5}
-  m_AnchoredPosition: {x: -312, y: 0}
+  m_AnchoredPosition: {x: -300, y: 0}
   m_SizeDelta: {x: 400, y: 600}
   m_Pivot: {x: 0.5, y: 0.5}
 --- !u!114 &1530046834
@@ -2921,9 +2921,9 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: 40250a5cd06443e6aec1109355fe909f, type: 3}
   m_Name: 
   m_EditorClassIdentifier: Assembly-CSharp::Lrw.Script.UI.SettingUI
-  hidePos: {x: 0, y: 0}
-  hideDuration: 1
-  ease: 1
+  hidePos: {x: 2200, y: 540}
+  hideDuration: 0.3
+  ease: 9
 --- !u!1 &1616481487
 GameObject:
   m_ObjectHideFlags: 0
