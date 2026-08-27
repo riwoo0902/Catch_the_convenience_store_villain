@@ -25,6 +25,8 @@ namespace Lrw.Script.UI
             
             transform.DOComplete();
             transform.DOMove(targetPos, hideDuration).SetEase(ease);
+            
+            _isHide = false;
         }
         
         
