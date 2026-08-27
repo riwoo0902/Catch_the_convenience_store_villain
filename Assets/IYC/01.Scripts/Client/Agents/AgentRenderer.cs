@@ -11,11 +11,20 @@ namespace Agents
         public void Init(ModuleOwner owner)
         {
             this.owner = owner;
-            Animator =  GetComponent<Animator>();
+            Animator = GetComponent<Animator>();
+
+            if (Animator == null)
+                Debug.LogWarning($"{nameof(AgentRenderer)} needs an Animator on the same GameObject.", this);
         }
 
         public void PlayClip(int clipHash, float normalizedTime, float crossFadeDuration, int layerIndex = 0)
         {
+            if (Animator == null || Animator.runtimeAnimatorController == null)
+            {
+                Debug.LogWarning($"{nameof(AgentRenderer)} cannot play animation because Animator or Controller is missing.", this);
+                return;
+            }
+
             Animator.CrossFade(clipHash, crossFadeDuration, layerIndex, normalizedTime);
         }
     }
