@@ -1,6 +1,6 @@
 ﻿using System;
 using DevLib.EventChannelSystem;
-using DevLib.SoundSystem;
+using DevLib.SoundSystem.Runtime;
 using UnityEngine;
 
 namespace DevLib.SkillSystem
@@ -11,7 +11,7 @@ namespace DevLib.SkillSystem
         [field: SerializeField] public SkillDataSo SkillData { get; private set; }
 
         [SerializeField] protected EventChannelSO soundChannel;
-        [SerializeField] protected SoundClipSo skillSound;
+        [SerializeField] protected SoundClipSO skillSound;
         
         public float NormalizedCooldown
         {

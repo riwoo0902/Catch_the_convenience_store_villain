@@ -1,3 +1,4 @@
+using DevLib.SoundSystem.Runtime;
 using UnityEditor;
 using UnityEditor.UIElements;
 using UnityEngine;
@@ -5,32 +6,31 @@ using UnityEngine.UIElements;
 
 namespace DevLib.SoundSystem.Editor
 {
-    [CustomEditor(typeof(SoundClipSo))]
-    public class SoundClipSoEditor : UnityEditor.Editor
+    [CustomEditor(typeof(SoundClipSO))]
+    public class SoundClipSOEditor : UnityEditor.Editor
     {
-        [SerializeField] private VisualTreeAsset uiAsset;
-        private const int   WaveformHeight = 80;
-        private const float MinDuration    = 0.1f;
-        private const float HandleGrabW    = 15f;
+        [SerializeField] private VisualTreeAsset editorView;
 
-        private Texture2D      _waveformTex;
-        private AudioClip      _cachedClip;
-        private bool           _draggingStart;
-        private bool           _draggingEnd;
-        private bool           _isPlaying;
-        private float          _playEndClipTime;
+        private const int WaveformHeight = 80;
+        private const float MinDuration = 0.1f;
+        private const float HandleGrabW = 15f; //잡는 핸들의 너비
+        
+        private Texture2D _waveformTex;
+        private AudioClip _cachedClip;
+        private bool _draggingStart;
+        private bool _draggingEnd;
+        private bool _isPlaying;
+        private float _playEndClipTime;
 
-        private Label          _startLabel;
-        private Label          _endLabel;
-        private Button         _playBtn;
-        private VisualElement  _waveformSection;
+        private Label _startLabel;
+        private Label _endLabel;
+        private Button _playBtn;
+        private VisualElement _waveformSection;
         private IMGUIContainer _waveformContainer;
 
         // 에디터 전용 프리뷰 AudioSource (HideAndDontSave — 씬에 저장되지 않음)
-        private static GameObject  _previewGo;
+        private static GameObject _previewGo;
         private static AudioSource _previewSrc;
-
-        // ── Lifecycle ─────────────────────────────────────────────────────
 
         private void OnEnable()
         {
@@ -46,19 +46,17 @@ namespace DevLib.SoundSystem.Editor
                 DestroyImmediate(_waveformTex);
         }
 
-        // ── CreateInspectorGUI ────────────────────────────────────────────
-
         public override VisualElement CreateInspectorGUI()
         {
-            var so = (SoundClipSo)target;
+            var so = (SoundClipSO)target;
 
-            if (uiAsset == null)
+            if (editorView == null)
             {
                 Debug.LogError($"[SoundClipSoEditor] UXML을 찾을 수 없음");
                 return base.CreateInspectorGUI();
             }
 
-            var root = uiAsset.CloneTree();
+            var root = editorView.CloneTree();
             root.Bind(serializedObject);
 
             _startLabel      = root.Q<Label>("start-label");
@@ -87,9 +85,7 @@ namespace DevLib.SoundSystem.Editor
             return root;
         }
 
-        // ── Clip 변경 처리 ────────────────────────────────────────────────
-
-        private void OnClipFieldChanged(SoundClipSo so, SerializedPropertyChangeEvent evt)
+        private void OnClipFieldChanged(SoundClipSO so, SerializedPropertyChangeEvent evt)
         {
             var newClip = evt.changedProperty.objectReferenceValue as AudioClip;
             if (newClip == _cachedClip) return;
@@ -110,9 +106,39 @@ namespace DevLib.SoundSystem.Editor
             _waveformSection.style.display = newClip != null ? DisplayStyle.Flex : DisplayStyle.None;
             UpdateLabels(so);
             _waveformContainer?.MarkDirtyRepaint();
+            
         }
 
-        // ── Editor Update (재생 종료 감지 + Repaint) ──────────────────────
+        private void OnPlayButtonClicked(SoundClipSO so)
+        {
+            if (_isPlaying)
+            {
+                StopPreview();
+                _isPlaying    = false;
+                _playBtn.text = "▶  Play";
+            }
+            else
+            {
+                float pitch = so.pitch;
+                if (so.randomizePitch)
+                    pitch = Mathf.Clamp(
+                        pitch + Random.Range(-so.randomPitchModifier, so.randomPitchModifier),
+                        0.1f, 3f);
+
+                _playEndClipTime = so.endTime;
+                PlayPreview(so.clip, so.startTime, pitch);
+                _isPlaying    = true;
+                _playBtn.text = "■  Stop";
+            }
+
+        }
+
+        private void UpdateLabels(SoundClipSO so)
+        {
+            if (so == null) return;
+            if (_startLabel != null) _startLabel.text = $"Start: {so.startTime:F3} s";
+            if (_endLabel   != null) _endLabel.text   = $"End: {so.endTime:F3} s";
+        }
 
         private void OnEditorUpdate()
         {
@@ -129,43 +155,110 @@ namespace DevLib.SoundSystem.Editor
             }
 
             _waveformContainer?.MarkDirtyRepaint();
+
+        }
+        
+        private static void StopPreview()
+        {
+            if (_previewSrc != null) _previewSrc.Stop();
+        }
+        
+        private static void PlayPreview(AudioClip clip, float startTime, float pitch)
+        {
+            var src         = EnsurePreviewSrc();
+            src.clip        = clip;
+            src.pitch       = pitch;
+            src.timeSamples = Mathf.RoundToInt(startTime * clip.frequency);
+            src.Play();
         }
 
-        // ── Waveform GUI (IMGUIContainer 콜백) ────────────────────────────
+        private static AudioSource EnsurePreviewSrc()
+        {
+            if (_previewSrc != null) return _previewSrc;
 
-        private void OnWaveformGUI(SoundClipSo so)
+            _previewGo  = EditorUtility.CreateGameObjectWithHideFlags(
+                "~SoundPreview", HideFlags.HideAndDontSave, typeof(AudioSource));
+            _previewSrc = _previewGo.GetComponent<AudioSource>();
+            return _previewSrc;
+        }
+
+        private void OnWaveformGUI(SoundClipSO so)
         {
             if (so == null || so.clip == null) return;
-
-            Rect waveRect = GUILayoutUtility.GetRect(
-                GUIContent.none, GUIStyle.none,
+            
+            //지정된 높이의 스타일 없는 사각형을 만든다. 너비는 최대 확장한다.
+            Rect waveRect = GUILayoutUtility.GetRect(GUIContent.none, GUIStyle.none,
                 GUILayout.Height(WaveformHeight), GUILayout.ExpandWidth(true));
 
             if (Event.current.type == EventType.Repaint)
             {
                 int w = Mathf.Max(1, (int)waveRect.width);
                 if (_waveformTex == null || _waveformTex.width != w)
-                    _waveformTex = BuildWaveform(so.clip, w, WaveformHeight);
+                    _waveformTex = BuildWaveform(so.clip, w, WaveformHeight); //크기에 맞게 텍스쳐 생성
             }
-
-            if (_waveformTex != null)
-                DrawWaveformAndHandles(waveRect, so);
-
-            // 드래그 후 레이블 갱신
-            if (Event.current.type == EventType.Repaint)
+            
+            if(_waveformTex != null)
+                DrawWaveformAndHandles(waveRect, so); //SO를 이용해서 실제로 파형과 핸들을 그린다.
+            
+            //드래그로 인해 다시 Repaint가 발생했다면.
+            if(Event.current.type == EventType.Repaint)
                 UpdateLabels(so);
         }
 
-        // ── Waveform + Handles ────────────────────────────────────────────
+        private Texture2D BuildWaveform(AudioClip clip, int width, int height)
+        {
+            //PCM - Pulse code modulation
+            float[] samples = new float[clip.samples * clip.channels];
+            clip.GetData(samples, 0); //클립에서 실제 샘플된 수치를 가져온다.
 
-        private void DrawWaveformAndHandles(Rect rect, SoundClipSo so)
+            int total = clip.samples;
+            int channels = clip.channels;
+            Color bgColor = new Color(0.13f, 0.13f, 0.13f, 1f); //검은색 계통
+            Color waveColor = new Color(0.38f, 0.68f, 1f, 1f);
+            Color[] pixels = new Color[width * height];
+            for (int i = 0; i < pixels.Length; i++)
+                pixels[i] = bgColor; //전부 배경색으로 칠한다.
+
+            //텍스쳐의 열을 하나씩 순회하면서 열 하나가 오디오 샘플 구간 하나에 대응시키도록 그린다.
+            for (int x = 0; x < width; x++)
+            {
+                //채널을 곱해주는 이유는 여러개일때 채널수만큼 건너뛰면서 숫자를 구하기 위함.
+                int s0 = (int)((float)x / width * total) * channels;
+                int s1 = (int)((float)(x + 1) / width * total) * channels;
+
+                s1 = Mathf.Min(s1, samples.Length);
+                if (s0 >= s1) s1 = s0 + 1;
+                
+                //이 구간에서 오디오 샘플 파형의 최소(lo)와  최대(hi)값을 탐색한다.
+                //오디오 샘플링 범위는 -1.0 ~ + 1.0까지야
+                float lo = 0f, hi = 0f;
+                for (int s = s0; s < s1; s++)
+                {
+                    if(samples[s]<lo) lo = samples[s];
+                    if(samples[s]>hi) hi = samples[s];
+                }
+                //샘플링된 -1~ 1까지의 값을 height로 변환한다.(remap)
+                int yLo = Mathf.Clamp((int)((lo * 0.5f + 0.5f) * height), 0, height - 1);
+                int yHi = Mathf.Clamp((int)((hi * 0.5f + 0.5f) * height), 0, height - 1);
+                
+                for(int y = yLo; y <= yHi; y++)
+                    pixels[x + y * width] = waveColor;
+            }
+            
+            Texture2D tex = new Texture2D(width, height, TextureFormat.RGBA32, false);
+            tex.SetPixels(pixels);
+            tex.Apply();
+            return tex;
+        }
+        
+        private void DrawWaveformAndHandles(Rect rect, SoundClipSO so)
         {
             float duration = so.clip.length;
-            float startX   = rect.x + (so.startTime / duration) * rect.width;
-            float endX     = rect.x + (so.endTime   / duration) * rect.width;
-
+            float startX = rect.x + (so.startTime / duration) * rect.width;
+            float endX = rect.x + (so.endTime / duration) * rect.width;
+            
             GUI.DrawTexture(rect, _waveformTex, ScaleMode.StretchToFill);
-
+            
             // 범위 밖 dim
             var dim = new Color(0f, 0f, 0f, 0.5f);
             EditorGUI.DrawRect(new Rect(rect.x, rect.y, startX - rect.x,  rect.height), dim);
@@ -191,9 +284,9 @@ namespace DevLib.SoundSystem.Editor
 
             HandleDrag(rect, so, startGrab, endGrab, duration);
         }
-
-        private void HandleDrag(Rect rect, SoundClipSo so,
-                                 Rect startGrab, Rect endGrab, float duration)
+        
+        private void HandleDrag(Rect rect, SoundClipSO so,
+            Rect startGrab, Rect endGrab, float duration)
         {
             Event e = Event.current;
             switch (e.type)
@@ -231,115 +324,5 @@ namespace DevLib.SoundSystem.Editor
             }
         }
 
-        // ── Play Button ───────────────────────────────────────────────────
-
-        private void OnPlayButtonClicked(SoundClipSo so)
-        {
-            if (_isPlaying)
-            {
-                StopPreview();
-                _isPlaying    = false;
-                _playBtn.text = "▶  Play";
-            }
-            else
-            {
-                float pitch = so.pitch;
-                if (so.randomizePitch)
-                    pitch = Mathf.Clamp(
-                        pitch + Random.Range(-so.randomPitchModifier, so.randomPitchModifier),
-                        0.1f, 3f);
-
-                _playEndClipTime = so.endTime;
-                PlayPreview(so.clip, so.startTime, pitch);
-                _isPlaying    = true;
-                _playBtn.text = "■  Stop";
-            }
-        }
-
-        private void UpdateLabels(SoundClipSo so)
-        {
-            if (so == null) return;
-            if (_startLabel != null) _startLabel.text = $"Start: {so.startTime:F3} s";
-            if (_endLabel   != null) _endLabel.text   = $"End: {so.endTime:F3} s";
-        }
-
-        // ── Preview AudioSource ───────────────────────────────────────────
-
-        private static void PlayPreview(AudioClip clip, float startTime, float pitch)
-        {
-            var src         = EnsurePreviewSrc();
-            src.clip        = clip;
-            src.pitch       = pitch;
-            src.timeSamples = Mathf.RoundToInt(startTime * clip.frequency);
-            src.Play();
-        }
-
-        private static void StopPreview()
-        {
-            if (_previewSrc != null) _previewSrc.Stop();
-        }
-
-        private static AudioSource EnsurePreviewSrc()
-        {
-            if (_previewSrc != null) return _previewSrc;
-
-            _previewGo  = EditorUtility.CreateGameObjectWithHideFlags(
-                "~SoundPreview", HideFlags.HideAndDontSave, typeof(AudioSource));
-            _previewSrc = _previewGo.GetComponent<AudioSource>();
-            return _previewSrc;
-        }
-
-        // ── Waveform Texture ──────────────────────────────────────────────
-
-        private static Texture2D BuildWaveform(AudioClip clip, int width, int height)
-        {
-            float[] samples = new float[clip.samples * clip.channels];
-            clip.GetData(samples, 0);
-
-            int     total  = clip.samples;
-            int     chans  = clip.channels;
-            var     bg     = new Color(0.13f, 0.13f, 0.13f, 1f);
-            var     wc     = new Color(0.38f, 0.68f, 1f,   1f);
-            Color[] pixels = new Color[width * height];
-            for (int i = 0; i < pixels.Length; i++) pixels[i] = bg; //전부 하얀색으로 칠하고.
-
-            // 텍스처의 각 픽셀 열(x)을 순회 — 열 하나가 오디오 샘플 구간 하나에 대응
-            for (int x = 0; x < width; x++)
-            {
-                // 이 열이 담당하는 샘플 배열의 시작/끝 인덱스 계산
-                // (픽셀 너비 : 전체 샘플 수 = x열 : s0~s1 구간)
-                // * chans 는 스테레오처럼 채널이 여럿일 때 채널 수만큼 건너뛰기 위함
-                int s0 = (int)((float)x       / width * total) * chans;
-                int s1 = (int)((float)(x + 1) / width * total) * chans;
-
-                // 배열 범위 초과 방지
-                s1 = Mathf.Min(s1, samples.Length);
-                // 구간 폭이 0이면 최소 샘플 1개는 읽도록 보정
-                if (s0 >= s1) s1 = s0 + 1;
-
-                // 이 구간에서 파형의 최솟값(lo)과 최댓값(hi)을 탐색
-                // 오디오 샘플 값의 범위는 -1.0 ~ +1.0
-                float lo = 0f, hi = 0f;
-                for (int s = s0; s < s1; s++)
-                {
-                    if (samples[s] < lo) lo = samples[s];
-                    if (samples[s] > hi) hi = samples[s];
-                }
-
-                // 샘플 값(-1~+1)을 픽셀 y좌표(0~height)로 변환
-                // lo * 0.5 + 0.5 → 0.0~0.5 (아래쪽), hi * 0.5 + 0.5 → 0.5~1.0 (위쪽)
-                int yLo = Mathf.Clamp((int)((lo * 0.5f + 0.5f) * height), 0, height - 1);
-                int yHi = Mathf.Clamp((int)((hi * 0.5f + 0.5f) * height), 0, height - 1);
-
-                // yLo ~ yHi 사이의 픽셀을 파형 색으로 채워 막대 모양의 파형을 그림
-                for (int y = yLo; y <= yHi; y++)
-                    pixels[y * width + x] = wc;
-            }
-
-            var tex = new Texture2D(width, height, TextureFormat.RGBA32, false);
-            tex.SetPixels(pixels);
-            tex.Apply();
-            return tex;
-        }
     }
 }
