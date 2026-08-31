@@ -1,0 +1,27 @@
+%YAML 1.1
+%TAG !u! tag:unity3d.com,2011:
+--- !u!114 &11400000
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 0}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: 8c4d07d5ee3d6ca4fb73f522d7c88104, type: 3}
+  m_Name: WallRunConfig
+  m_EditorClassIdentifier: Assembly-CSharp::CWH.Player.Config.WallRunConfig
+  DetectionDistance: 0.7
+  MinHeightAboveGround: 1
+  MinSpeedToStart: 10
+  RunSpeed: 30
+  GravityMultiplier: 0.2
+  MaxDuration: 5
+  StickForce: 8
+  ExitUpwardBoost: 2
+  JumpOutwardForce: 3
+  JumpUpwardForce: 7.5
+  SpeedDecayPerSecond: 3
+  JumpSpeedBoost: 10
+  ExhaustionSprintLockoutDuration: 5
