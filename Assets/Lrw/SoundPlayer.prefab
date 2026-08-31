@@ -10,7 +10,7 @@ GameObject:
   m_Component:
   - component: {fileID: 7660816626575548966}
   - component: {fileID: 1323948015558355464}
-  - component: {fileID: 5714522040324813913}
+  - component: {fileID: 9055516673026890333}
   m_Layer: 0
   m_Name: SoundPlayer
   m_TagString: Untagged
@@ -130,7 +130,7 @@ AudioSource:
     m_PreInfinity: 2
     m_PostInfinity: 2
     m_RotationOrder: 4
---- !u!114 &5714522040324813913
+--- !u!114 &9055516673026890333
 MonoBehaviour:
   m_ObjectHideFlags: 0
   m_CorrespondingSourceObject: {fileID: 0}
@@ -139,9 +139,9 @@ MonoBehaviour:
   m_GameObject: {fileID: 2410810704252216985}
   m_Enabled: 1
   m_EditorHideFlags: 0
-  m_Script: {fileID: 11500000, guid: 97d49dffffbf4c889451741fcc3a3468, type: 3}
+  m_Script: {fileID: 11500000, guid: 3a2be5c10e11412ca2263f747533151b, type: 3}
   m_Name: 
-  m_EditorClassIdentifier: SoundSystem_Assembly::DevLib.SoundSystem.SoundPlayer
+  m_EditorClassIdentifier: SoundSystem_Runtime_assembly::DevLib.SoundSystem.Runtime.SoundPlayer
   <PoolItem>k__BackingField: {fileID: 11400000, guid: 421a1ac6fed884046ad736750d5171d5, type: 2}
   sfxGroup: {fileID: 6034007972580168253, guid: 408489cbb71f03844b9d194fe2ec8d8a, type: 2}
   musicGroup: {fileID: 2002043349979403554, guid: 408489cbb71f03844b9d194fe2ec8d8a, type: 2}
