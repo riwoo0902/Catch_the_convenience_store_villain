@@ -23,10 +23,10 @@ namespace Lrw.Script.UI
         {
             Vector2 targetPos = _isHide ? _showPos : hidePos;
             
-            transform.DOComplete();
+            transform.DOKill();
             transform.DOMove(targetPos, hideDuration).SetEase(ease);
             
-            _isHide = false;
+            _isHide = !_isHide;
         }
         
         

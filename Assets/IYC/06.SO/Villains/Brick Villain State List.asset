@@ -1,0 +1,23 @@
+%YAML 1.1
+%TAG !u! tag:unity3d.com,2011:
+--- !u!114 &11400000
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 0}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: f2ec875ec15b4809917de5a3738d4922, type: 3}
+  m_Name: Brick Villain State List
+  m_EditorClassIdentifier: Client::Agents.FSM.StateListSO
+  generatePath: 
+  enumName: VillainState
+  states:
+  - {fileID: 11400000, guid: 0cece5098ac64b4f8a73611893e0f301, type: 2}
+  - {fileID: 11400000, guid: 1b38bb3a5d994dcaa86915f3a3ad0d42, type: 2}
+  - {fileID: 11400000, guid: c022612c2f044e859bed256e0633737d, type: 2}
+  - {fileID: 11400000, guid: a901f79d75d74f20bf4d5632a873de6a, type: 2}
+  - {fileID: 11400000, guid: 7de3e4061d614d0697c4d5e52756b016, type: 2}
+  - {fileID: 11400000, guid: 0b50d15dbcb645e1b45f73d398569fd2, type: 2}

@@ -2,7 +2,7 @@ using Agents;
 
 namespace Villains.FSM
 {
-    public class BrickVillainChaseState : AbstractBrickVillainState
+    public class BrickVillainChaseState : BrickVillainState
     {
         public BrickVillainChaseState(Agent agent, int stateClipHash) : base(agent, stateClipHash)
         {
@@ -12,19 +12,19 @@ namespace Villains.FSM
         {
             base.Update();
 
-            if (!_villain.IsTargetInDetectionRange)
+            if (!HasRememberedTarget)
             {
-                _villain.ChangeState(VillainState.IDLE, 0.1f);
+                _villain.ChangeState(VillainState.IDLE);
                 return;
             }
 
-            if (_villain.IsTargetInThrowRange && _villain.IsThrowReady)
+            if (IsTargetInAttackRange)
             {
-                _villain.ChangeState(VillainState.THROW, 0.1f);
+                _villain.ChangeState(VillainState.AIM);
                 return;
             }
 
-            _villain.MoveToTarget();
+            _movement.MoveTo(_targetProvider.LastTargetPosition);
         }
     }
 }
