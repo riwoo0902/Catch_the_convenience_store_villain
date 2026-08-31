@@ -17,7 +17,7 @@ namespace Agents.FSM
             {
                 Type type = ResolveStateType(stateData.className);
                 Debug.Assert(type != null, $"찾고자 하는 타입이 없습니다. : {stateData.className}");
-                int paramHash = stateData.stateParam != null ? stateData.stateParam.ParamHash : 0;
+                int paramHash = GetStateClipHash(stateData);
                 AgentState state = (AgentState)Activator.CreateInstance(type, agent, paramHash);
 
                 _stateDict.Add(stateData.assetIndex, state);
@@ -34,6 +34,14 @@ namespace Agents.FSM
             CurrentState.Enter(transitionDuration);
         }
 
+        public TState GetState<TState>(int stateIndex) where TState : AgentState
+        {
+            if (_stateDict.TryGetValue(stateIndex, out AgentState state))
+                return state as TState;
+
+            return null;
+        }
+
         public void UpdateMachine() => CurrentState?.Update();
 
         private Type ResolveStateType(string className)
@@ -45,6 +53,19 @@ namespace Agents.FSM
             return AppDomain.CurrentDomain.GetAssemblies()
                 .Select(assembly => assembly.GetType(className))
                 .FirstOrDefault(foundType => foundType != null);
+        }
+
+        private int GetStateClipHash(StateSO stateData)
+        {
+            if (stateData.stateParam == null)
+                return 0;
+
+            if (stateData.stateParam.ParamHash != 0)
+                return stateData.stateParam.ParamHash;
+
+            return string.IsNullOrEmpty(stateData.stateParam.ParamName)
+                ? 0
+                : Animator.StringToHash(stateData.stateParam.ParamName);
         }
     }
 }
