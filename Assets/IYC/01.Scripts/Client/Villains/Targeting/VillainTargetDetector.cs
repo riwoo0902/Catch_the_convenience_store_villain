@@ -6,9 +6,9 @@ namespace Villains.Targeting
 {
     public class VillainTargetDetector : MonoBehaviour, IModule
     {
-        [SerializeField] private float detectionRange = 12f;
-        [SerializeField] private float closeDetectionRange = 2f;
-        [SerializeField, Range(0f, 360f)] private float viewAngle = 130f;
+        [SerializeField] private float detectionRange = 20f;
+        [SerializeField] private float closeDetectionRange = 4f;
+        [SerializeField, Range(0f, 360f)] private float viewAngle = 220f;
         [SerializeField] private LayerMask targetLayer;
         [SerializeField] private LayerMask obstacleLayer;
         [SerializeField] private Transform eyePoint;
@@ -16,7 +16,10 @@ namespace Villains.Targeting
         private readonly Collider[] _detectedColliders = new Collider[16];
         private VillainTargetProvider _targetProvider;
 
-        private Vector3 EyePosition => eyePoint != null ? eyePoint.position : transform.position + Vector3.up;
+        public float DetectionRange => detectionRange;
+        public float CloseDetectionRange => closeDetectionRange;
+        public float ViewAngle => viewAngle;
+        public Vector3 EyePosition => eyePoint != null ? eyePoint.position : transform.position + Vector3.up;
 
         public void Init(ModuleOwner owner)
         {

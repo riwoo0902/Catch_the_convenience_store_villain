@@ -153,3 +153,8 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: 5fb291ef7717ae042bd10173ec2958fa, type: 3}
   m_Name: 
   m_EditorClassIdentifier: Client::Villains.Projectiles.BrickProjectile
+  spinAxis: {x: 0, y: 0, z: 1}
+  spinSpeed: 720
+  disturbShelfProductsOnHit: 1
+  shelfProductMaxPositionOffset: {x: 0.22, y: 0.08, z: 0.2}
+  shelfProductMaxRotationOffset: {x: 35, y: 55, z: 35}

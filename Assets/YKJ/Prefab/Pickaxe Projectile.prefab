@@ -144,3 +144,6 @@ MonoBehaviour:
   m_EditorClassIdentifier: Client::Villains.Projectiles.PickaxeProjectile
   spinAxis: {x: 0, y: 0, z: 1}
   spinSpeed: 1080
+  disturbShelfProductsOnHit: 1
+  shelfProductMaxPositionOffset: {x: 0.22, y: 0.08, z: 0.2}
+  shelfProductMaxRotationOffset: {x: 35, y: 55, z: 35}

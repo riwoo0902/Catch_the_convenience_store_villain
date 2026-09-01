@@ -5,8 +5,8 @@ namespace Villains.Movement
 {
     public class VillainMovement : MonoBehaviour, IModule
     {
-        [SerializeField] private float moveSpeed = 2.5f;
-        [SerializeField] private float fleeSpeed = 5f;
+        [SerializeField] private float moveSpeed = 4f;
+        [SerializeField] private float fleeSpeed = 6.5f;
         [SerializeField] private float rotationSpeed = 540f;
         [SerializeField] private float arriveDistance = 0.4f;
 

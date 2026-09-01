@@ -1,5 +1,6 @@
 using IYC._01.Scripts.CoreSystem.Module;
 using UnityEngine;
+using Villains.Environment;
 
 namespace Villains.Projectiles
 {
@@ -8,6 +9,9 @@ namespace Villains.Projectiles
     {
         [SerializeField] private Vector3 spinAxis = Vector3.forward;
         [SerializeField] private float spinSpeed = 720f;
+        [SerializeField] private bool disturbShelfProductsOnHit = true;
+        [SerializeField] private Vector3 shelfProductMaxPositionOffset = new Vector3(0.22f, 0.08f, 0.2f);
+        [SerializeField] private Vector3 shelfProductMaxRotationOffset = new Vector3(35f, 55f, 35f);
 
         private Rigidbody _rigidbody;
         private ModuleOwner _owner;
@@ -55,8 +59,20 @@ namespace Villains.Projectiles
             if (_owner != null && collision.collider.transform.root == _owner.transform)
                 return;
 
+            TryDisturbShelfProduct(collision.collider.transform);
             collision.collider.SendMessageUpwards("TakeDamage", _damage, SendMessageOptions.DontRequireReceiver);
             Destroy(gameObject);
+        }
+
+        private void TryDisturbShelfProduct(Transform hitTransform)
+        {
+            if (!disturbShelfProductsOnHit)
+                return;
+
+            ShelfProductDisturbance.TryDisturb(
+                hitTransform,
+                shelfProductMaxPositionOffset,
+                shelfProductMaxRotationOffset);
         }
 
         private bool IsExcluded(GameObject target)
