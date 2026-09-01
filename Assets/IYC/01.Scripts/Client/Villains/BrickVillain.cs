@@ -25,7 +25,7 @@ namespace Villains
         public VillainTargetProvider TargetProvider { get; private set; }
         public VillainTargetDetector TargetDetector { get; private set; }
         public VillainMovement Movement { get; private set; }
-        public BrickThrowAttack ThrowAttack { get; private set; }
+        public ProjectileThrowAttack ThrowAttack { get; private set; }
         public VillainAnimationEventRelay AnimationEvents { get; private set; }
         public Vector3 FleeDestination => fleeDestination != null ? fleeDestination.position : fallbackFleeDestination;
         public bool DisableOnFleeCompleted => disableOnFleeCompleted;
@@ -39,7 +39,7 @@ namespace Villains
             TargetProvider = GetModule<VillainTargetProvider>();
             TargetDetector = GetModule<VillainTargetDetector>();
             Movement = GetModule<VillainMovement>();
-            ThrowAttack = GetModule<BrickThrowAttack>();
+            ThrowAttack = GetModule<ProjectileThrowAttack>();
             AnimationEvents = GetModule<VillainAnimationEventRelay>();
 
             Debug.Assert(stateList != null, $"{nameof(BrickVillain)} needs a StateListSO.", this);
