@@ -1,4 +1,7 @@
 ﻿using UnityEngine;
+using UnityEngine.InputSystem;
+using UnityEngine.TextCore.Text;
+
 namespace Branches.CWH.Scripts.Player.Test
 {
     public class PlayerPositionResetTrigger : MonoBehaviour

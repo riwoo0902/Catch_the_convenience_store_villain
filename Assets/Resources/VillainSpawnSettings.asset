@@ -1,0 +1,27 @@
+%YAML 1.1
+%TAG !u! tag:unity3d.com,2011:
+--- !u!114 &11400000
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 0}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: 71e09430b62f4dbbb2a2536159162a11, type: 3}
+  m_Name: VillainSpawnSettings
+  m_EditorClassIdentifier: Assembly-CSharp::CWH.Villains.VillainSpawnSettings
+  _villainVisualPrefab: {fileID: 1308782320497000878, guid: 5487cdc361212ea429afa9c9c1caddf9, type: 3}
+  _brickPrefab: {fileID: -2676254519284174068, guid: 08a9a17446b28d542affabc8913de07e, type: 3}
+  _throwData: {fileID: 11400000, guid: 3445688188af48c8bc1ed5bd5395d0ed, type: 2}
+  _animatorController: {fileID: 9100000, guid: f425eaff126c4a94ea87dbc263a638ff, type: 2}
+  _visualScale: 3
+  _minimumSpawnDelay: 10
+  _maximumSpawnDelay: 20
+  _spawnDistanceBehindPlayer: 10
+  _doorInsideDistance: 2
+  _doorOutsideDistance: 4
+  _chaseSpeed: 5
+  _fleeSpeed: 7
+  _preferredAttackDistance: 5.5
