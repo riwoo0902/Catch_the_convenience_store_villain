@@ -16,6 +16,8 @@ MonoBehaviour:
   cooldown: 2.4
   damage: 2
   projectileLifeTime: 5
+  releaseNormalizedTime: 0.58
+  maxAnimationWaitTime: 1.25
   minSpeed: 8
   maxSpeed: 15
   minPitchDeg: 10

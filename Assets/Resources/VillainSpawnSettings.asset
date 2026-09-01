@@ -16,7 +16,12 @@ MonoBehaviour:
   _brickPrefab: {fileID: -2676254519284174068, guid: 08a9a17446b28d542affabc8913de07e, type: 3}
   _throwData: {fileID: 11400000, guid: 3445688188af48c8bc1ed5bd5395d0ed, type: 2}
   _animatorController: {fileID: 9100000, guid: f425eaff126c4a94ea87dbc263a638ff, type: 2}
+  _policePrefab: {fileID: 2448049240235316319, guid: fe23b93edc7487a47b078beda2d941ca, type: 3}
+  _policeWeaponPrefab: {fileID: 100000, guid: a6e01e63e46a86d4283a34c2a93b8b7d, type: 3}
   _visualScale: 3
+  _policeVisualScale: 2.2
+  _policeVisualYOffset: 0.05
+  _policeGroundClearance: 0.03
   _minimumSpawnDelay: 10
   _maximumSpawnDelay: 20
   _spawnDistanceBehindPlayer: 10
@@ -24,4 +29,11 @@ MonoBehaviour:
   _doorOutsideDistance: 4
   _chaseSpeed: 5
   _fleeSpeed: 7
-  _preferredAttackDistance: 5.5
+  _preferredAttackDistance: 10.5
+  _policeAttackRange: 2
+  _policeAttackInterval: 1.15
+  _policeAttackHitDelay: 0.35
+  _policeAttackLockDuration: 0.9
+  _policeWeaponLocalPosition: {x: 0.02, y: 0.04, z: 0.12}
+  _policeWeaponLocalRotation: {x: 15, y: 90, z: 80}
+  _policeWeaponLocalScale: {x: 0.7, y: 0.7, z: 0.7}

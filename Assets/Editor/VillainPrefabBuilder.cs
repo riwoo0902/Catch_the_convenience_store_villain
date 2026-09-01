@@ -55,7 +55,8 @@ public static class VillainPrefabBuilder
                 FindChild(root.transform, "RightHand"),
                 Vector3.zero,
                 0f,
-                Vector3.zero
+                Vector3.zero,
+                0.8f
             );
 
             SavePrefab(root, BrickOutputPath);
@@ -85,7 +86,8 @@ public static class VillainPrefabBuilder
                 FindChild(root.transform, "RightHand"),
                 new Vector3(0f, 0.25f, 0.45f),
                 1.2f,
-                new Vector3(90f, 0f, 0f)
+                new Vector3(90f, 0f, 0f),
+                1.2f
             );
 
             SavePrefab(root, PickaxeOutputPath);
@@ -150,7 +152,8 @@ public static class VillainPrefabBuilder
         Transform throwPoint,
         Vector3 spawnOffset,
         float minimumSpawnHeight,
-        Vector3 projectileRotationOffset)
+        Vector3 projectileRotationOffset,
+        float aimHeightOffset)
     {
         SerializedObject serializedObject = new SerializedObject(attack);
         serializedObject.FindProperty("throwData").objectReferenceValue = throwData;
@@ -159,7 +162,7 @@ public static class VillainPrefabBuilder
         serializedObject.FindProperty("spawnOffset").vector3Value = spawnOffset;
         serializedObject.FindProperty("minimumSpawnHeightFromOwner").floatValue = minimumSpawnHeight;
         serializedObject.FindProperty("projectileRotationOffset").vector3Value = projectileRotationOffset;
-        serializedObject.FindProperty("aimHeightOffset").floatValue = 1.2f;
+        serializedObject.FindProperty("aimHeightOffset").floatValue = aimHeightOffset;
         serializedObject.FindProperty("excludeLayer").FindPropertyRelative("m_Bits").intValue = 0;
         serializedObject.ApplyModifiedPropertiesWithoutUndo();
     }

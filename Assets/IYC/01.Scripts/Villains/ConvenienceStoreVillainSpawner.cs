@@ -44,12 +44,28 @@ namespace CWH.Villains
 
         public static void RequestAllVillainsFlee()
         {
+            global::Villains.BrickVillain[] fsmVillains = FindObjectsByType<global::Villains.BrickVillain>(
+                FindObjectsInactive.Exclude,
+                FindObjectsSortMode.None);
+            foreach (global::Villains.BrickVillain villain in fsmVillains)
+            {
+                villain.FleeFromStore();
+            }
+
             RuntimeBrickVillain[] villains = FindObjectsByType<RuntimeBrickVillain>(
                 FindObjectsInactive.Exclude,
                 FindObjectsSortMode.None);
             foreach (RuntimeBrickVillain villain in villains)
             {
                 villain.BeginFlee();
+            }
+
+            global::Villains.BrickThrowingVillain[] legacyVillains = FindObjectsByType<global::Villains.BrickThrowingVillain>(
+                FindObjectsInactive.Exclude,
+                FindObjectsSortMode.None);
+            foreach (global::Villains.BrickThrowingVillain villain in legacyVillains)
+            {
+                villain.FleeFromStore();
             }
         }
 
@@ -106,7 +122,15 @@ namespace CWH.Villains
                 _outsideDoorPosition,
                 Quaternion.LookRotation(entryDirection, Vector3.up));
             villainObject.name = "Brick Villain";
-            villainObject.transform.localScale *= _settings.VisualScale;
+
+            global::Villains.BrickVillain fsmVillain = villainObject.GetComponent<global::Villains.BrickVillain>();
+            if (fsmVillain != null)
+            {
+                fsmVillain.SetFallbackFleeDestination(_outsideDoorPosition);
+                return;
+            }
+
+            villainObject.transform.localScale = Vector3.one * _settings.VisualScale;
             RuntimeBrickVillain villain = villainObject.AddComponent<RuntimeBrickVillain>();
             villain.Initialize(_settings, _player, _insideDoorPosition, _outsideDoorPosition);
         }

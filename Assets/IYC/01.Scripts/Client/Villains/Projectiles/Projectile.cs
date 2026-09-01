@@ -34,6 +34,7 @@ namespace Villains.Projectiles
             if (_rigidbody == null)
                 _rigidbody = GetComponent<Rigidbody>();
 
+            _rigidbody.collisionDetectionMode = CollisionDetectionMode.ContinuousDynamic;
             _rigidbody.linearVelocity = Vector3.zero;
             _rigidbody.angularVelocity = Vector3.zero;
             _rigidbody.linearVelocity = velocity;
@@ -53,14 +54,25 @@ namespace Villains.Projectiles
 
         protected virtual void OnCollisionEnter(Collision collision)
         {
-            if (!_isInitialized || IsExcluded(collision.collider.gameObject))
+            HandleHit(collision.collider);
+        }
+
+        protected virtual void OnTriggerEnter(Collider other)
+        {
+            HandleHit(other);
+        }
+
+        private void HandleHit(Collider hitCollider)
+        {
+            if (!_isInitialized || hitCollider == null || IsExcluded(hitCollider.gameObject))
                 return;
 
-            if (_owner != null && collision.collider.transform.root == _owner.transform)
+            if (_owner != null && hitCollider.transform.root == _owner.transform)
                 return;
 
-            TryDisturbShelfProduct(collision.collider.transform);
-            collision.collider.SendMessageUpwards("TakeDamage", _damage, SendMessageOptions.DontRequireReceiver);
+            TryDisturbShelfProduct(hitCollider.transform);
+            hitCollider.SendMessageUpwards("TakeDamage", _damage, SendMessageOptions.DontRequireReceiver);
+
             Destroy(gameObject);
         }
 

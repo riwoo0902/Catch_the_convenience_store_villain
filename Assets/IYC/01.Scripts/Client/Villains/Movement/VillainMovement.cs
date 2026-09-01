@@ -1,5 +1,6 @@
 using IYC._01.Scripts.CoreSystem.Module;
 using UnityEngine;
+using UnityEngine.AI;
 
 namespace Villains.Movement
 {
@@ -11,6 +12,7 @@ namespace Villains.Movement
         [SerializeField] private float arriveDistance = 0.4f;
 
         private CharacterController _characterController;
+        private NavMeshAgent _navMeshAgent;
         private Transform _ownerTransform;
 
         public Vector3 Velocity { get; private set; }
@@ -20,11 +22,21 @@ namespace Villains.Movement
         {
             _ownerTransform = owner.transform;
             _characterController = owner.GetComponent<CharacterController>();
+            _navMeshAgent = owner.GetComponent<NavMeshAgent>();
+            if (_navMeshAgent == null)
+                _navMeshAgent = owner.gameObject.AddComponent<NavMeshAgent>();
+
+            ConfigureNavMeshAgent(moveSpeed);
         }
 
         public void Stop()
         {
             Velocity = Vector3.zero;
+            if (_navMeshAgent != null && _navMeshAgent.enabled && _navMeshAgent.isOnNavMesh)
+            {
+                _navMeshAgent.ResetPath();
+                _navMeshAgent.velocity = Vector3.zero;
+            }
         }
 
         public void MoveTo(Vector3 destination)
@@ -47,6 +59,9 @@ namespace Villains.Movement
 
             FaceDirection(direction);
             Velocity = direction.normalized * speed;
+
+            if (TryMoveWithNavMesh(destination, speed))
+                return;
 
             if (_characterController != null)
                 _characterController.SimpleMove(Velocity);
@@ -72,6 +87,50 @@ namespace Villains.Movement
                 targetRotation,
                 rotationSpeed * Time.deltaTime
             );
+        }
+
+        private void ConfigureNavMeshAgent(float speed)
+        {
+            if (_navMeshAgent == null)
+                return;
+
+            _navMeshAgent.speed = speed;
+            _navMeshAgent.angularSpeed = rotationSpeed;
+            _navMeshAgent.acceleration = Mathf.Max(8f, speed * 4f);
+            _navMeshAgent.stoppingDistance = arriveDistance;
+            _navMeshAgent.radius = _characterController != null ? _characterController.radius : 0.35f;
+            _navMeshAgent.height = _characterController != null ? _characterController.height : 2f;
+            _navMeshAgent.updateRotation = false;
+        }
+
+        private bool TryMoveWithNavMesh(Vector3 destination, float speed)
+        {
+            if (_navMeshAgent == null || !_navMeshAgent.enabled)
+                return false;
+
+            if (!_navMeshAgent.isOnNavMesh)
+            {
+                if (!NavMesh.SamplePosition(_ownerTransform.position, out NavMeshHit hit, 2f, NavMesh.AllAreas))
+                    return false;
+
+                _navMeshAgent.Warp(hit.position);
+            }
+
+            if (!NavMesh.SamplePosition(destination, out NavMeshHit destinationHit, 2f, NavMesh.AllAreas))
+                return false;
+
+            ConfigureNavMeshAgent(speed);
+            _navMeshAgent.SetDestination(destinationHit.position);
+            Velocity = _navMeshAgent.desiredVelocity.sqrMagnitude > 0.001f
+                ? _navMeshAgent.desiredVelocity
+                : Velocity;
+
+            if (Velocity.sqrMagnitude > 0.001f)
+                FaceDirection(Velocity);
+
+            IsArrived = !_navMeshAgent.pathPending
+                        && _navMeshAgent.remainingDistance <= arriveDistance;
+            return true;
         }
     }
 }

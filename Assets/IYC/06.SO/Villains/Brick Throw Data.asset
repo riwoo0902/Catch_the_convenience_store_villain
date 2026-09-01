@@ -12,14 +12,16 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: bfea7c1ba31474545a2425cc11d88ae8, type: 3}
   m_Name: Brick Throw Data
   m_EditorClassIdentifier: Client::Villains.Data.BrickThrowDataSO
-  attackRange: 7
+  attackRange: 13
   cooldown: 2
   damage: 1
   projectileLifeTime: 5
-  minSpeed: 7
-  maxSpeed: 14
-  minPitchDeg: 8
-  maxPitchDeg: 35
+  releaseNormalizedTime: 0.55
+  maxAnimationWaitTime: 1.2
+  minSpeed: 9
+  maxSpeed: 20
+  minPitchDeg: 2
+  maxPitchDeg: 14
   speedCurve:
     serializedVersion: 2
     m_Curve:

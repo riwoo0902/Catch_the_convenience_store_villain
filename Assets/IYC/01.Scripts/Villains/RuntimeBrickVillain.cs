@@ -1,4 +1,5 @@
 using UnityEngine;
+using UnityEngine.AI;
 using Villains.Data;
 using Villains.Projectiles;
 
@@ -12,6 +13,7 @@ namespace CWH.Villains
         private VillainSpawnSettings _settings;
         private Transform _target;
         private CharacterController _controller;
+        private NavMeshAgent _navMeshAgent;
         private Animator _animator;
         private Vector3 _insideDoorPosition;
         private Vector3 _outsideDoorPosition;
@@ -19,10 +21,12 @@ namespace CWH.Villains
         private float _nextThrowTime;
         private float _fleeStartedTime;
         private float _animationLockedUntil;
+        private float _pendingThrowTime;
         private string _currentAnimation;
         private bool _isEntering;
         private bool _isFleeing;
         private bool _reachedInsideExitWaypoint;
+        private bool _hasPendingThrow;
 
         public bool IsFleeing => _isFleeing;
 
@@ -48,6 +52,14 @@ namespace CWH.Villains
                 _controller.center = new Vector3(0f, 0.9f, 0f);
                 _controller.stepOffset = 0.25f;
             }
+
+            _navMeshAgent = GetComponent<NavMeshAgent>();
+            if (_navMeshAgent == null)
+            {
+                _navMeshAgent = gameObject.AddComponent<NavMeshAgent>();
+            }
+
+            ConfigureNavMeshAgent(settings.ChaseSpeed);
 
             _animator = GetComponentInChildren<Animator>();
             if (_animator != null && settings.AnimatorController != null)
@@ -111,6 +123,7 @@ namespace CWH.Villains
             {
                 FaceDirection(toTarget);
                 Move(Vector3.zero);
+                UpdatePendingThrow();
                 TryThrowBrick();
                 if (Time.time >= _animationLockedUntil)
                 {
@@ -137,7 +150,35 @@ namespace CWH.Villains
         {
             BrickThrowDataSO throwData = _settings.ThrowData;
             BrickProjectile brickPrefab = _settings.BrickPrefab;
-            if (throwData == null || brickPrefab == null || Time.time < _nextThrowTime)
+            if (throwData == null || brickPrefab == null || _hasPendingThrow || Time.time < _nextThrowTime)
+            {
+                return;
+            }
+
+            float maxWaitTime = Mathf.Max(0.1f, throwData.maxAnimationWaitTime);
+            _pendingThrowTime = Time.time + maxWaitTime * Mathf.Clamp01(throwData.releaseNormalizedTime);
+            _nextThrowTime = Time.time + throwData.cooldown;
+            _animationLockedUntil = Time.time + maxWaitTime;
+            _hasPendingThrow = true;
+            PlayAnimation("Throw", 0.05f, true);
+        }
+
+        private void UpdatePendingThrow()
+        {
+            if (!_hasPendingThrow || Time.time < _pendingThrowTime)
+            {
+                return;
+            }
+
+            _hasPendingThrow = false;
+            ReleaseBrick();
+        }
+
+        private void ReleaseBrick()
+        {
+            BrickThrowDataSO throwData = _settings.ThrowData;
+            BrickProjectile brickPrefab = _settings.BrickPrefab;
+            if (throwData == null || brickPrefab == null || _target == null)
             {
                 return;
             }
@@ -146,7 +187,7 @@ namespace CWH.Villains
             Vector3 spawnPosition = transform.position
                                     + Vector3.up * (1.25f * visualScale)
                                     + transform.forward * (0.75f * visualScale);
-            Vector3 targetPosition = _target.position + Vector3.up * 1.2f;
+            Vector3 targetPosition = _target.position + Vector3.up * 0.8f;
             Vector3 velocity = BuildInitialVelocity(spawnPosition, targetPosition, throwData);
             BrickProjectile projectile = Instantiate(
                 brickPrefab,
@@ -162,10 +203,6 @@ namespace CWH.Villains
                     Physics.IgnoreCollision(projectileCollider, ownCollider, true);
                 }
             }
-
-            _nextThrowTime = Time.time + throwData.cooldown;
-            _animationLockedUntil = Time.time + 0.55f;
-            PlayAnimation("Throw", 0.05f, true);
         }
 
         private static Vector3 BuildInitialVelocity(
@@ -218,6 +255,11 @@ namespace CWH.Villains
 
         private void Move(Vector3 horizontalVelocity)
         {
+            if (TryMoveWithNavMesh(horizontalVelocity))
+            {
+                return;
+            }
+
             if (_controller == null || !_controller.enabled)
             {
                 transform.position += horizontalVelocity * Time.deltaTime;
@@ -235,6 +277,81 @@ namespace CWH.Villains
 
             Vector3 velocity = horizontalVelocity + Vector3.up * _verticalVelocity;
             _controller.Move(velocity * Time.deltaTime);
+        }
+
+        private bool TryMoveWithNavMesh(Vector3 horizontalVelocity)
+        {
+            if (_navMeshAgent == null || !_navMeshAgent.enabled || _settings == null)
+            {
+                return false;
+            }
+
+            if (!_navMeshAgent.isOnNavMesh)
+            {
+                if (!NavMesh.SamplePosition(transform.position, out NavMeshHit hit, 2f, NavMesh.AllAreas))
+                {
+                    return false;
+                }
+
+                _navMeshAgent.Warp(hit.position);
+            }
+
+            if (horizontalVelocity.sqrMagnitude <= 0.001f)
+            {
+                _navMeshAgent.ResetPath();
+                _navMeshAgent.velocity = Vector3.zero;
+                return true;
+            }
+
+            float speed = horizontalVelocity.magnitude;
+            Vector3 destination = transform.position + horizontalVelocity.normalized * 1.5f;
+            if (_isEntering)
+            {
+                destination = _insideDoorPosition;
+            }
+            else if (_isFleeing)
+            {
+                destination = _reachedInsideExitWaypoint ? _outsideDoorPosition : _insideDoorPosition;
+            }
+            else if (_target != null)
+            {
+                destination = _target.position;
+            }
+
+            if (!NavMesh.SamplePosition(destination, out NavMeshHit destinationHit, 2f, NavMesh.AllAreas))
+            {
+                return false;
+            }
+
+            ConfigureNavMeshAgent(speed);
+            _navMeshAgent.stoppingDistance = _isEntering || _isFleeing
+                ? 0.4f
+                : Mathf.Max(0.4f, _settings.PreferredAttackDistance * 0.85f);
+            _navMeshAgent.SetDestination(destinationHit.position);
+
+            Vector3 desiredVelocity = _navMeshAgent.desiredVelocity;
+            if (desiredVelocity.sqrMagnitude > 0.001f)
+            {
+                FaceDirection(desiredVelocity);
+            }
+
+            return true;
+        }
+
+        private void ConfigureNavMeshAgent(float speed)
+        {
+            if (_navMeshAgent == null)
+            {
+                return;
+            }
+
+            _navMeshAgent.speed = speed;
+            _navMeshAgent.angularSpeed = 720f;
+            _navMeshAgent.acceleration = Mathf.Max(8f, speed * 4f);
+            _navMeshAgent.stoppingDistance = 0.4f;
+            _navMeshAgent.radius = _controller != null ? _controller.radius : 0.32f;
+            _navMeshAgent.height = _controller != null ? _controller.height : 1.8f;
+            _navMeshAgent.updateRotation = false;
         }
 
         private void FaceDirection(Vector3 direction)

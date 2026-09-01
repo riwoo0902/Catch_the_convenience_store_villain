@@ -21,6 +21,8 @@ namespace CWH.Player.UI
 
         private PlayerHealth _health;
         private TextMeshProUGUI _healthText;
+        private GameObject _policeCountdownPanel;
+        private TextMeshProUGUI _policeCountdownText;
         private GameObject _phoneOverlay;
         private GameObject _homeScreen;
         private GameObject _youtubeScreen;
@@ -141,6 +143,7 @@ namespace CWH.Player.UI
             BuildPhoneDialerScreen(settings);
             BuildMailQuestScreen();
             BuildHealthDisplay(canvasRect);
+            BuildPoliceCountdownDisplay(canvasRect);
             RefreshPhoneSize();
         }
 
@@ -466,26 +469,36 @@ namespace CWH.Player.UI
                 return;
             }
 
+            _policeCallPending = true;
             StartCoroutine(CompleteEmergencyCall());
+            SetPhoneOpen(false);
         }
 
         private IEnumerator CompleteEmergencyCall()
         {
-            _policeCallPending = true;
             if (_emergencyCallButton != null)
             {
                 _emergencyCallButton.interactable = false;
             }
 
+            ShowPoliceCountdown(true);
             for (int seconds = 5; seconds > 0; seconds--)
             {
                 _dialerStatusText.SetText("POLICE ARRIVING IN {0}", seconds);
+                SetPoliceCountdown(seconds);
                 yield return new WaitForSeconds(1f);
             }
 
-            ConvenienceStoreVillainSpawner.RequestAllVillainsFlee();
+            PoliceResponseController.RequestPoliceResponse();
             _dialerStatusText.SetText("POLICE ARRIVED");
             _dialerStatusText.color = new Color(0.05f, 0.55f, 0.2f, 1f);
+            SetPoliceCountdown(0);
+            yield return new WaitForSeconds(0.65f);
+            ShowPoliceCountdown(false);
+            _policeCallPending = false;
+            _dialedNumber = string.Empty;
+            RefreshDialedNumber();
+            RefreshEmergencyCallButton();
         }
 
         private void BuildMailQuestScreen()
@@ -683,6 +696,63 @@ namespace CWH.Player.UI
             textRect.offsetMin = new Vector2(18f, 4f);
             textRect.offsetMax = new Vector2(-12f, -4f);
             _healthText = textObject.GetComponent<TextMeshProUGUI>();
+        }
+
+        private void BuildPoliceCountdownDisplay(RectTransform canvasRect)
+        {
+            _policeCountdownPanel = CreateRectObject("PoliceCountdown", canvasRect);
+            RectTransform panelRect = (RectTransform)_policeCountdownPanel.transform;
+            panelRect.anchorMin = new Vector2(0.5f, 1f);
+            panelRect.anchorMax = new Vector2(0.5f, 1f);
+            panelRect.pivot = new Vector2(0.5f, 1f);
+            panelRect.anchoredPosition = new Vector2(0f, -26f);
+            panelRect.sizeDelta = new Vector2(390f, 72f);
+
+            Image panelImage = _policeCountdownPanel.AddComponent<Image>();
+            panelImage.color = new Color(0.02f, 0.03f, 0.04f, 0.82f);
+            panelImage.raycastTarget = false;
+
+            GameObject textObject = CreateTextObject(
+                "PoliceCountdownText",
+                panelRect,
+                "POLICE ARRIVING IN 5",
+                28f,
+                FontStyles.Bold,
+                TextAlignmentOptions.Center);
+            RectTransform textRect = (RectTransform)textObject.transform;
+            StretchToParent(textRect);
+            textRect.offsetMin = new Vector2(18f, 6f);
+            textRect.offsetMax = new Vector2(-18f, -6f);
+            _policeCountdownText = textObject.GetComponent<TextMeshProUGUI>();
+            _policeCountdownText.color = new Color(0.65f, 0.9f, 1f, 1f);
+
+            _policeCountdownPanel.SetActive(false);
+        }
+
+        private void ShowPoliceCountdown(bool isVisible)
+        {
+            if (_policeCountdownPanel != null)
+            {
+                _policeCountdownPanel.SetActive(isVisible);
+            }
+        }
+
+        private void SetPoliceCountdown(int seconds)
+        {
+            if (_policeCountdownText == null)
+            {
+                return;
+            }
+
+            if (seconds <= 0)
+            {
+                _policeCountdownText.SetText("POLICE ARRIVED");
+                _policeCountdownText.color = new Color(0.35f, 1f, 0.5f, 1f);
+                return;
+            }
+
+            _policeCountdownText.SetText("POLICE ARRIVING IN {0}", seconds);
+            _policeCountdownText.color = new Color(0.65f, 0.9f, 1f, 1f);
         }
 
         private void RefreshHealthText(float currentHealth, float maxHealth)

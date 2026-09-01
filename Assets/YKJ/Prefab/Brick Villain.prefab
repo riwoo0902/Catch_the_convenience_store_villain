@@ -435,7 +435,7 @@ Transform:
   serializedVersion: 2
   m_LocalRotation: {x: 0, y: 0, z: 0, w: 1}
   m_LocalPosition: {x: 0, y: 0, z: 0}
-  m_LocalScale: {x: 2, y: 2, z: 2}
+  m_LocalScale: {x: 2.2, y: 2.2, z: 2.2}
   m_ConstrainProportionsScale: 0
   m_Children:
   - {fileID: 7337137198377110410}
@@ -548,6 +548,24 @@ MonoBehaviour:
     serializedVersion: 2
     m_Bits: 0
   eyePoint: {fileID: 0}
+--- !u!114 &7100100000000000009
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 1308782320497000878}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: 54e73f05d3dd42d9be197b4eb01d4205, type: 3}
+  m_Name: 
+  m_EditorClassIdentifier: Client::Villains.Visuals.VillainDetectionVisualizer
+  showDetectionRange: 1
+  detectionColor: {r: 1, g: 0.86, b: 0.1, a: 0.85}
+  closeDetectionColor: {r: 1, g: 0.2, b: 0.15, a: 0.9}
+  lineWidth: 0.045
+  segments: 56
+  groundOffset: 0.04
 --- !u!114 &7100100000000000005
 MonoBehaviour:
   m_ObjectHideFlags: 0
@@ -582,7 +600,7 @@ MonoBehaviour:
   spawnOffset: {x: 0, y: 0, z: 0}
   minimumSpawnHeightFromOwner: 0
   projectileRotationOffset: {x: 0, y: 0, z: 0}
-  aimHeightOffset: 1.2
+  aimHeightOffset: 0.8
   excludeLayer:
     serializedVersion: 2
     m_Bits: 0
@@ -610,24 +628,6 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: 7b6ebc42388a4e79a7f7f2d356705e33, type: 3}
   m_Name: 
   m_EditorClassIdentifier: Client::Villains.Animation.VillainAnimationEventRelay
---- !u!114 &7100100000000000009
-MonoBehaviour:
-  m_ObjectHideFlags: 0
-  m_CorrespondingSourceObject: {fileID: 0}
-  m_PrefabInstance: {fileID: 0}
-  m_PrefabAsset: {fileID: 0}
-  m_GameObject: {fileID: 1308782320497000878}
-  m_Enabled: 1
-  m_EditorHideFlags: 0
-  m_Script: {fileID: 11500000, guid: 54e73f05d3dd42d9be197b4eb01d4205, type: 3}
-  m_Name: 
-  m_EditorClassIdentifier: Client::Villains.Visuals.VillainDetectionVisualizer
-  showDetectionRange: 1
-  detectionColor: {r: 1, g: 0.86, b: 0.1, a: 0.85}
-  closeDetectionColor: {r: 1, g: 0.2, b: 0.15, a: 0.9}
-  lineWidth: 0.045
-  segments: 56
-  groundOffset: 0.04
 --- !u!1 &1487632065059031298
 GameObject:
   m_ObjectHideFlags: 0

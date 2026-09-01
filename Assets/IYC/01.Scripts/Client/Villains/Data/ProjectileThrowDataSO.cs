@@ -10,6 +10,8 @@ namespace Villains.Data
         public float cooldown = 2f;
         public int damage = 1;
         public float projectileLifeTime = 5f;
+        [Range(0f, 1f)] public float releaseNormalizedTime = 0.55f;
+        public float maxAnimationWaitTime = 2f;
 
         [Header("Trajectory")]
         public float minSpeed = 7f;

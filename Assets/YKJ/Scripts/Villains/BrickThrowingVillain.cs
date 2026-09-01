@@ -2,6 +2,7 @@ using Agents;
 using Agents.FSM;
 using Player;
 using UnityEngine;
+using UnityEngine.AI;
 
 namespace Villains
 {
@@ -19,7 +20,9 @@ namespace Villains
 
         [Header("Movement")]
         [SerializeField] private float moveSpeed = 2.5f;
+        [SerializeField] private float fleeSpeed = 6.5f;
         [SerializeField] private float rotationSpeed = 540f;
+        [SerializeField] private Vector3 fallbackFleeDestination = new Vector3(0f, 0f, -12f);
 
         [Header("Throw")]
         [SerializeField] private BrickProjectile brickPrefab;
@@ -31,7 +34,9 @@ namespace Villains
 
         private StateMachine _stateMachine;
         private CharacterController _characterController;
+        private NavMeshAgent _navMeshAgent;
         private float _lastThrowTime = -999f;
+        private bool _isFleeing;
 
         public bool HasTarget => target != null;
         public bool IsTargetInDetectionRange => HasTarget && DistanceToTarget <= detectionRange;
@@ -43,6 +48,11 @@ namespace Villains
         {
             base.InitializeModules();
             _characterController = GetComponent<CharacterController>();
+            _navMeshAgent = GetComponent<NavMeshAgent>();
+            if (_navMeshAgent == null)
+                _navMeshAgent = gameObject.AddComponent<NavMeshAgent>();
+
+            ConfigureNavMeshAgent(moveSpeed, 0.4f);
 
             if (findPlayerOnStart && target == null)
             {
@@ -62,6 +72,12 @@ namespace Villains
 
         private void Update()
         {
+            if (_isFleeing)
+            {
+                UpdateFlee();
+                return;
+            }
+
             _stateMachine?.UpdateMachine();
         }
 
@@ -87,6 +103,9 @@ namespace Villains
             RotateTo(direction);
 
             Vector3 velocity = direction.normalized * moveSpeed;
+            if (TryMoveWithNavMesh(target.position, moveSpeed, throwRange))
+                return;
+
             if (_characterController != null)
                 _characterController.SimpleMove(velocity);
             else
@@ -118,6 +137,33 @@ namespace Villains
             _lastThrowTime = Time.time;
         }
 
+        public void FleeFromStore()
+        {
+            target = null;
+            _isFleeing = true;
+        }
+
+        private void UpdateFlee()
+        {
+            Vector3 direction = fallbackFleeDestination - transform.position;
+            direction.y = 0f;
+            if (direction.magnitude <= 0.5f)
+            {
+                gameObject.SetActive(false);
+                return;
+            }
+
+            RotateTo(direction);
+            Vector3 velocity = direction.normalized * fleeSpeed;
+            if (TryMoveWithNavMesh(fallbackFleeDestination, fleeSpeed, 0.5f))
+                return;
+
+            if (_characterController != null)
+                _characterController.SimpleMove(velocity);
+            else
+                transform.position += velocity * Time.deltaTime;
+        }
+
         private void RotateTo(Vector3 direction)
         {
             if (direction.sqrMagnitude <= 0.01f)
@@ -129,6 +175,46 @@ namespace Villains
                 targetRotation,
                 rotationSpeed * Time.deltaTime
             );
+        }
+
+        private bool TryMoveWithNavMesh(Vector3 destination, float speed, float stoppingDistance)
+        {
+            if (_navMeshAgent == null || !_navMeshAgent.enabled)
+                return false;
+
+            if (!_navMeshAgent.isOnNavMesh)
+            {
+                if (!NavMesh.SamplePosition(transform.position, out NavMeshHit hit, 2f, NavMesh.AllAreas))
+                    return false;
+
+                _navMeshAgent.Warp(hit.position);
+            }
+
+            if (!NavMesh.SamplePosition(destination, out NavMeshHit destinationHit, 2f, NavMesh.AllAreas))
+                return false;
+
+            ConfigureNavMeshAgent(speed, stoppingDistance);
+            _navMeshAgent.SetDestination(destinationHit.position);
+
+            Vector3 desiredVelocity = _navMeshAgent.desiredVelocity;
+            if (desiredVelocity.sqrMagnitude > 0.001f)
+                RotateTo(desiredVelocity);
+
+            return true;
+        }
+
+        private void ConfigureNavMeshAgent(float speed, float stoppingDistance)
+        {
+            if (_navMeshAgent == null)
+                return;
+
+            _navMeshAgent.speed = speed;
+            _navMeshAgent.angularSpeed = rotationSpeed;
+            _navMeshAgent.acceleration = Mathf.Max(8f, speed * 4f);
+            _navMeshAgent.stoppingDistance = stoppingDistance;
+            _navMeshAgent.radius = _characterController != null ? _characterController.radius : 0.35f;
+            _navMeshAgent.height = _characterController != null ? _characterController.height : 2f;
+            _navMeshAgent.updateRotation = false;
         }
     }
 }

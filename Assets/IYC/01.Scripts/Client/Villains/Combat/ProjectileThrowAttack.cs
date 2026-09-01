@@ -22,6 +22,8 @@ namespace Villains.Combat
         private float _lastAttackTime = -999f;
 
         public float AttackRange => throwData != null ? throwData.attackRange : 0f;
+        public float ReleaseNormalizedTime => throwData != null ? throwData.releaseNormalizedTime : 0.55f;
+        public float MaxAnimationWaitTime => throwData != null ? throwData.maxAnimationWaitTime : 2f;
         public bool CanAttack => throwData != null && projectilePrefab != null && Time.time >= _lastAttackTime + throwData.cooldown;
 
         public void Init(ModuleOwner owner)

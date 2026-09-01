@@ -7,8 +7,6 @@ namespace Villains
     {
         [SerializeField] private float lifeTime = 5f;
         [SerializeField] private int damage = 1;
-        [SerializeField] private string targetTag = "Player";
-
         private Rigidbody _rigidbody;
         private float _spawnTime;
         private bool _isInitialized;
@@ -39,16 +37,26 @@ namespace Villains
             if (_rigidbody == null)
                 _rigidbody = GetComponent<Rigidbody>();
 
+            _rigidbody.collisionDetectionMode = CollisionDetectionMode.ContinuousDynamic;
             _rigidbody.linearVelocity = velocity;
         }
 
         private void OnCollisionEnter(Collision collision)
         {
-            if (!_isInitialized)
+            HandleHit(collision.collider);
+        }
+
+        private void OnTriggerEnter(Collider other)
+        {
+            HandleHit(other);
+        }
+
+        private void HandleHit(Collider hitCollider)
+        {
+            if (!_isInitialized || hitCollider == null)
                 return;
 
-            if (collision.collider.CompareTag(targetTag))
-                Debug.Log($"Brick hit {collision.collider.name}. Damage: {damage}", this);
+            hitCollider.SendMessageUpwards("TakeDamage", damage, SendMessageOptions.DontRequireReceiver);
 
             Destroy(gameObject);
         }
