@@ -2,6 +2,7 @@ using System;
 using System.Collections.Generic;
 using UnityEngine;
 using UnityEngine.InputSystem;
+using Villains.Projectiles;
 
 namespace CWH.Player.Interaction
 {
@@ -26,8 +27,23 @@ namespace CWH.Player.Interaction
         [SerializeField] private Vector3 _maxPositionOffset = new(0.14f, 0.04f, 0.12f);
         [SerializeField] private Vector3 _maxRotationOffset = new(22f, 35f, 22f);
 
-        private readonly Dictionary<Transform, LocalPose> _originalPoses = new();
+        [Header("Unorganized Detection")]
+        [SerializeField, Min(0.0001f)] private float _positionTolerance = 0.001f;
+        [SerializeField, Range(0.1f, 15f)] private float _rotationTolerance = 2f;
+        [SerializeField, Min(0.02f)] private float _poseCheckInterval = 0.12f;
+
+        private readonly Dictionary<Transform, LocalPose> _initialPoses = new();
+        private readonly HashSet<Transform> _unorganizedProducts = new();
         private Camera _viewCamera;
+        private float _nextPoseCheckTime;
+
+        public static int UnorganizedProductCount { get; private set; }
+
+        [RuntimeInitializeOnLoadMethod(RuntimeInitializeLoadType.BeforeSceneLoad)]
+        private static void ResetUnorganizedProductCount()
+        {
+            UnorganizedProductCount = 0;
+        }
 
         [RuntimeInitializeOnLoadMethod(RuntimeInitializeLoadType.AfterSceneLoad)]
         private static void InstallOnPlayerCamera()
@@ -89,6 +105,53 @@ namespace CWH.Player.Interaction
         private void Awake()
         {
             _viewCamera = GetComponent<Camera>();
+            CaptureInitialProductPoses();
+            BrickProjectile.HitTarget += HandleBrickHit;
+        }
+
+        private void CaptureInitialProductPoses()
+        {
+            Transform[] sceneTransforms = FindObjectsByType<Transform>(
+                FindObjectsInactive.Include,
+                FindObjectsSortMode.None);
+            foreach (Transform candidate in sceneTransforms)
+            {
+                if (!TryResolveProductRoot(candidate, out Transform product)
+                    || _initialPoses.ContainsKey(product))
+                {
+                    continue;
+                }
+
+                _initialPoses.Add(product, new LocalPose(product.localPosition, product.localRotation));
+                EnableProductPhysics(product);
+            }
+        }
+
+        private static void EnableProductPhysics(Transform product)
+        {
+            Rigidbody[] rigidbodies = product.GetComponentsInChildren<Rigidbody>(true);
+            foreach (Rigidbody rigidbody in rigidbodies)
+            {
+                rigidbody.isKinematic = false;
+                rigidbody.useGravity = true;
+                rigidbody.detectCollisions = true;
+            }
+        }
+
+        private static void ResetProductPhysics(Transform product)
+        {
+            Rigidbody[] rigidbodies = product.GetComponentsInChildren<Rigidbody>(true);
+            foreach (Rigidbody rigidbody in rigidbodies)
+            {
+                if (rigidbody.isKinematic)
+                {
+                    continue;
+                }
+
+                rigidbody.linearVelocity = Vector3.zero;
+                rigidbody.angularVelocity = Vector3.zero;
+                rigidbody.WakeUp();
+            }
         }
 
         private void Update()
@@ -107,6 +170,12 @@ namespace CWH.Player.Interaction
             {
                 RestoreLookedProduct();
             }
+
+            if (Time.unscaledTime >= _nextPoseCheckTime)
+            {
+                _nextPoseCheckTime = Time.unscaledTime + _poseCheckInterval;
+                RefreshUnorganizedProducts();
+            }
         }
 
         private void DisturbLookedProduct()
@@ -116,11 +185,32 @@ namespace CWH.Player.Interaction
                 return;
             }
 
-            if (!_originalPoses.TryGetValue(product, out LocalPose originalPose))
+            DisturbProduct(product);
+        }
+
+        private void HandleBrickHit(Transform hitTransform)
+        {
+            if (TryResolveProductRoot(hitTransform, out Transform product))
             {
-                originalPose = new LocalPose(product.localPosition, product.localRotation);
-                _originalPoses.Add(product, originalPose);
+                DisturbProduct(product);
             }
+        }
+
+        private void DisturbProduct(Transform product)
+        {
+            if (product == null)
+            {
+                return;
+            }
+
+            if (!_initialPoses.TryGetValue(product, out LocalPose initialPose))
+            {
+                initialPose = new LocalPose(product.localPosition, product.localRotation);
+                _initialPoses.Add(product, initialPose);
+                EnableProductPhysics(product);
+            }
+
+            SetUnorganized(product, true);
 
             Vector3 positionOffset = new(
                 UnityEngine.Random.Range(-_maxPositionOffset.x, _maxPositionOffset.x),
@@ -132,19 +222,80 @@ namespace CWH.Player.Interaction
                 UnityEngine.Random.Range(-_maxRotationOffset.z, _maxRotationOffset.z));
 
             product.SetLocalPositionAndRotation(
-                originalPose.Position + positionOffset,
-                originalPose.Rotation * Quaternion.Euler(rotationOffset));
+                initialPose.Position + positionOffset,
+                initialPose.Rotation * Quaternion.Euler(rotationOffset));
+            ResetProductPhysics(product);
+            Physics.SyncTransforms();
         }
 
         private void RestoreLookedProduct()
         {
             if (!TryGetLookedProduct(out Transform product)
-                || !_originalPoses.Remove(product, out LocalPose originalPose))
+                || !_initialPoses.TryGetValue(product, out LocalPose initialPose))
             {
                 return;
             }
 
-            product.SetLocalPositionAndRotation(originalPose.Position, originalPose.Rotation);
+            product.SetLocalPositionAndRotation(initialPose.Position, initialPose.Rotation);
+            ResetProductPhysics(product);
+            Physics.SyncTransforms();
+            SetUnorganized(product, false);
+        }
+
+        private void RefreshUnorganizedProducts()
+        {
+            foreach (KeyValuePair<Transform, LocalPose> entry in _initialPoses)
+            {
+                Transform product = entry.Key;
+                if (product == null)
+                {
+                    continue;
+                }
+
+                LocalPose initialPose = entry.Value;
+                bool positionChanged = (product.localPosition - initialPose.Position).sqrMagnitude
+                                       > _positionTolerance * _positionTolerance;
+                bool rotationChanged = Quaternion.Angle(product.localRotation, initialPose.Rotation)
+                                       > _rotationTolerance;
+                SetUnorganized(product, positionChanged || rotationChanged);
+            }
+        }
+
+        private void SetUnorganized(Transform product, bool isUnorganized)
+        {
+            bool changed = isUnorganized
+                ? _unorganizedProducts.Add(product)
+                : _unorganizedProducts.Remove(product);
+
+            ProductXRayHighlighter highlighter = product.GetComponent<ProductXRayHighlighter>();
+            if (isUnorganized && highlighter == null)
+            {
+                highlighter = product.gameObject.AddComponent<ProductXRayHighlighter>();
+            }
+
+            if (highlighter != null)
+            {
+                highlighter.SetHighlighted(isUnorganized);
+            }
+
+            if (changed)
+            {
+                UnorganizedProductCount = _unorganizedProducts.Count;
+            }
+        }
+
+        private void OnDestroy()
+        {
+            BrickProjectile.HitTarget -= HandleBrickHit;
+            foreach (Transform product in _unorganizedProducts)
+            {
+                if (product != null && product.TryGetComponent(out ProductXRayHighlighter highlighter))
+                {
+                    highlighter.SetHighlighted(false);
+                }
+            }
+
+            UnorganizedProductCount = 0;
         }
 
         private bool TryGetLookedProduct(out Transform product)
@@ -152,17 +303,27 @@ namespace CWH.Player.Interaction
             product = null;
 
             Ray viewRay = new(_viewCamera.transform.position, _viewCamera.transform.forward);
-            if (!Physics.Raycast(
-                    viewRay,
-                    out RaycastHit hit,
-                    _interactionDistance,
-                    _raycastLayers,
-                    QueryTriggerInteraction.Ignore))
+            RaycastHit[] hits = Physics.RaycastAll(
+                viewRay,
+                _interactionDistance,
+                _raycastLayers,
+                QueryTriggerInteraction.Ignore);
+            if (hits.Length == 0)
             {
                 return false;
             }
 
-            return TryResolveProductRoot(hit.transform, out product);
+            Array.Sort(hits, static (left, right) => left.distance.CompareTo(right.distance));
+            foreach (RaycastHit hit in hits)
+            {
+                if (TryResolveProductRoot(hit.transform, out product))
+                {
+                    return true;
+                }
+            }
+
+            product = null;
+            return false;
         }
 
         private static bool TryResolveProductRoot(Transform hitTransform, out Transform product)
@@ -172,7 +333,8 @@ namespace CWH.Player.Interaction
             for (Transform current = hitTransform; current != null && current.parent != null; current = current.parent)
             {
                 Transform possibleProductGroup = current.parent;
-                if (!IsProductGroup(possibleProductGroup) || !IsAllowedShelf(possibleProductGroup.parent))
+                if (!IsProductGroup(possibleProductGroup)
+                    || !IsAllowedShelf(possibleProductGroup.parent))
                 {
                     continue;
                 }

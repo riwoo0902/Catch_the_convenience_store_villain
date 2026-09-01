@@ -1,3 +1,4 @@
+using System;
 using IYC._01.Scripts.CoreSystem.Module;
 using UnityEngine;
 
@@ -6,6 +7,8 @@ namespace Villains.Projectiles
     [RequireComponent(typeof(Rigidbody))]
     public class BrickProjectile : MonoBehaviour
     {
+        public static event Action<Transform> HitTarget;
+
         private Rigidbody _rigidbody;
         private ModuleOwner _owner;
         private LayerMask _excludeLayer;
@@ -45,6 +48,7 @@ namespace Villains.Projectiles
             if (_owner != null && collision.collider.transform.root == _owner.transform)
                 return;
 
+            HitTarget?.Invoke(collision.collider.transform);
             collision.collider.SendMessageUpwards("TakeDamage", _damage, SendMessageOptions.DontRequireReceiver);
             Destroy(gameObject);
         }

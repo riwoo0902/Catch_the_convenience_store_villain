@@ -1,0 +1,19 @@
+%YAML 1.1
+%TAG !u! tag:unity3d.com,2011:
+--- !u!114 &11400000
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 0}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: cd46ba14c3ab4891926993e08175aab4, type: 3}
+  m_Name: PlayerHUDSettings
+  m_EditorClassIdentifier: Assembly-CSharp::CWH.Player.UI.PlayerHUDSettings
+  _phoneSprite: {fileID: 465631399, guid: 644f3198564664741b6fee72367f1a95, type: 3}
+  _phoneAppIcon: {fileID: -975606308, guid: 7afa11f509c5a954e8977d938faabbfe, type: 3}
+  _emergencyCallIcon: {fileID: 1726835351, guid: 5ad0c63645702934da116a182429b0e4, type: 3}
+  _youtubeLogo: {fileID: -857801315, guid: 87ad5b3a80abf0343808da73beac19d6, type: 3}
+  _mailIcon: {fileID: 1620816557, guid: 1ed41cf8472c9d0468e9a098e598c715, type: 3}
