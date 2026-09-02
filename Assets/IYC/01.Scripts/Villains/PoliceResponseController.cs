@@ -1,6 +1,7 @@
 using UnityEngine;
 using UnityEngine.AI;
 using UnityEngine.SceneManagement;
+using Villains.Visuals;
 
 namespace CWH.Villains
 {
@@ -230,9 +231,12 @@ namespace CWH.Villains
         private static Material s_uniformMaterial;
         private static Material s_skinMaterial;
         private static Material s_badgeMaterial;
+        private static Material s_batMaterial;
+        private static Material s_batHandleMaterial;
 
         private CharacterController _controller;
         private NavMeshAgent _navMeshAgent;
+        private GroundVisualAnchor _groundVisualAnchor;
         private Transform _visualRoot;
         private Transform _weaponRoot;
         private Animator _animator;
@@ -306,6 +310,7 @@ namespace CWH.Villains
             navMeshAgent.stoppingDistance = 1.4f;
             navMeshAgent.radius = controller.radius;
             navMeshAgent.height = controller.height;
+            navMeshAgent.baseOffset = 0f;
             navMeshAgent.updateRotation = false;
 
             Animator animator = visual != null ? visual.GetComponent<Animator>() : null;
@@ -332,7 +337,13 @@ namespace CWH.Villains
             }
 
             officer._groundClearance = groundClearance;
-            officer.AttachTemporaryWeapon(weaponPrefab, weaponLocalPosition, weaponLocalRotation, weaponLocalScale);
+            officer._weaponRoot = officer.FindExistingWeaponRoot();
+            if (officer._weaponRoot == null)
+            {
+                officer.AttachTemporaryWeapon(weaponPrefab, weaponLocalPosition, weaponLocalRotation, weaponLocalScale);
+            }
+
+            officer.InstallGroundAnchor();
             return root;
         }
 
@@ -348,6 +359,7 @@ namespace CWH.Villains
             _controller = GetComponent<CharacterController>();
             _navMeshAgent = GetComponent<NavMeshAgent>();
             _animator = GetComponentInChildren<Animator>();
+            InstallGroundAnchor();
             _destination = destination;
             _runSpeed = runSpeed;
             _arriveDistance = arriveDistance;
@@ -396,7 +408,7 @@ namespace CWH.Villains
 
         private void LateUpdate()
         {
-            if (_visualRoot != null && _animator != null)
+            if (_visualRoot != null && _animator != null && _groundVisualAnchor == null)
             {
                 _visualRoot.localPosition = _visualBaseLocalPosition;
                 _visualRoot.localRotation = Quaternion.identity;
@@ -547,6 +559,7 @@ namespace CWH.Villains
             _navMeshAgent.angularSpeed = 720f;
             _navMeshAgent.acceleration = Mathf.Max(12f, speed * 4f);
             _navMeshAgent.stoppingDistance = _target != null ? _attackRange : _arriveDistance;
+            _navMeshAgent.baseOffset = 0f;
             _navMeshAgent.SetDestination(destinationHit.position);
 
             Vector3 desiredVelocity = _navMeshAgent.desiredVelocity;
@@ -564,14 +577,15 @@ namespace CWH.Villains
             Vector3 localRotation,
             Vector3 localScale)
         {
-            if (weaponPrefab == null)
+            Transform hand = ResolveWeaponHand();
+            if (hand == null)
             {
                 return;
             }
 
-            Transform hand = FindChildRecursive(transform, "RightHand");
-            if (hand == null)
+            if (weaponPrefab == null)
             {
+                BuildFallbackBat(hand, localPosition, localRotation, localScale);
                 return;
             }
 
@@ -592,6 +606,84 @@ namespace CWH.Villains
                 weaponRigidbody.isKinematic = true;
                 weaponRigidbody.detectCollisions = false;
             }
+        }
+
+        private Transform ResolveWeaponHand()
+        {
+            Transform hand = FindChildRecursive(transform, "RightHand");
+            if (hand != null)
+            {
+                return hand;
+            }
+
+            Transform parent = _visualRoot != null ? _visualRoot : transform;
+            GameObject handObject = new("RightHand");
+            handObject.transform.SetParent(parent, false);
+            handObject.transform.localPosition = new Vector3(0.45f, 1.35f, 0.35f);
+            handObject.transform.localRotation = Quaternion.Euler(0f, 0f, -20f);
+            return handObject.transform;
+        }
+
+        private Transform FindExistingWeaponRoot()
+        {
+            Transform searchRoot = _visualRoot != null ? _visualRoot : transform;
+            Transform[] children = searchRoot.GetComponentsInChildren<Transform>(true);
+            foreach (Transform child in children)
+            {
+                string childName = child.name;
+                if (childName.Contains("Bat") || childName.Contains("Baseball Bat") || childName.Contains("Low Poly Baseball Bat"))
+                {
+                    return child;
+                }
+            }
+
+            return null;
+        }
+
+        private void BuildFallbackBat(
+            Transform hand,
+            Vector3 localPosition,
+            Vector3 localRotation,
+            Vector3 localScale)
+        {
+            GameObject batRoot = new("Temporary Police Bat");
+            batRoot.transform.SetParent(hand, false);
+            batRoot.transform.localPosition = localPosition;
+            batRoot.transform.localRotation = Quaternion.Euler(localRotation);
+            batRoot.transform.localScale = localScale;
+            _weaponRoot = batRoot.transform;
+
+            GameObject barrel = GameObject.CreatePrimitive(PrimitiveType.Cylinder);
+            barrel.name = "Bat Barrel";
+            barrel.transform.SetParent(batRoot.transform, false);
+            barrel.transform.localPosition = new Vector3(0f, 0.42f, 0f);
+            barrel.transform.localScale = new Vector3(0.11f, 0.42f, 0.11f);
+            Destroy(barrel.GetComponent<Collider>());
+            barrel.GetComponent<Renderer>().sharedMaterial = BatMaterial;
+
+            GameObject handle = GameObject.CreatePrimitive(PrimitiveType.Cylinder);
+            handle.name = "Bat Handle";
+            handle.transform.SetParent(batRoot.transform, false);
+            handle.transform.localPosition = new Vector3(0f, -0.12f, 0f);
+            handle.transform.localScale = new Vector3(0.045f, 0.18f, 0.045f);
+            Destroy(handle.GetComponent<Collider>());
+            handle.GetComponent<Renderer>().sharedMaterial = BatHandleMaterial;
+        }
+
+        private void InstallGroundAnchor()
+        {
+            if (_visualRoot == null)
+            {
+                return;
+            }
+
+            _groundVisualAnchor = GetComponent<GroundVisualAnchor>();
+            if (_groundVisualAnchor == null)
+            {
+                _groundVisualAnchor = gameObject.AddComponent<GroundVisualAnchor>();
+            }
+
+            _groundVisualAnchor.Configure(_visualRoot, _weaponRoot, _groundClearance);
         }
 
         private void BuildFallbackVisuals()
@@ -731,6 +823,7 @@ namespace CWH.Villains
             float closestSqrDistance = float.MaxValue;
 
             CheckTargets(Object.FindObjectsByType<RuntimeBrickVillain>(FindObjectsSortMode.None), origin, ref closest, ref closestSqrDistance);
+            CheckTargets(Object.FindObjectsByType<RuntimeProductDisturberVillain>(FindObjectsSortMode.None), origin, ref closest, ref closestSqrDistance);
             CheckTargets(Object.FindObjectsByType<global::Villains.BrickVillain>(FindObjectsSortMode.None), origin, ref closest, ref closestSqrDistance);
             CheckTargets(Object.FindObjectsByType<global::Villains.BrickThrowingVillain>(FindObjectsSortMode.None), origin, ref closest, ref closestSqrDistance);
 
@@ -776,6 +869,13 @@ namespace CWH.Villains
             if (runtimeVillain != null)
             {
                 Destroy(runtimeVillain.gameObject);
+                return;
+            }
+
+            RuntimeProductDisturberVillain productDisturber = target.GetComponentInParent<RuntimeProductDisturberVillain>();
+            if (productDisturber != null)
+            {
+                Destroy(productDisturber.gameObject);
                 return;
             }
 
@@ -863,6 +963,38 @@ namespace CWH.Villains
                 }
 
                 return s_badgeMaterial;
+            }
+        }
+
+        private static Material BatMaterial
+        {
+            get
+            {
+                if (s_batMaterial == null)
+                {
+                    s_batMaterial = new Material(FindDefaultShader())
+                    {
+                        color = new Color(0.72f, 0.58f, 0.38f)
+                    };
+                }
+
+                return s_batMaterial;
+            }
+        }
+
+        private static Material BatHandleMaterial
+        {
+            get
+            {
+                if (s_batHandleMaterial == null)
+                {
+                    s_batHandleMaterial = new Material(FindDefaultShader())
+                    {
+                        color = new Color(0.18f, 0.12f, 0.08f)
+                    };
+                }
+
+                return s_batHandleMaterial;
             }
         }
 

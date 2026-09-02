@@ -1,6 +1,7 @@
 using IYC._01.Scripts.CoreSystem.Module;
 using UnityEngine;
 using UnityEngine.AI;
+using Villains.Visuals;
 
 namespace Villains.Movement
 {
@@ -13,6 +14,7 @@ namespace Villains.Movement
 
         private CharacterController _characterController;
         private NavMeshAgent _navMeshAgent;
+        private GroundVisualAnchor _groundVisualAnchor;
         private Transform _ownerTransform;
 
         public Vector3 Velocity { get; private set; }
@@ -27,6 +29,12 @@ namespace Villains.Movement
                 _navMeshAgent = owner.gameObject.AddComponent<NavMeshAgent>();
 
             ConfigureNavMeshAgent(moveSpeed);
+
+            _groundVisualAnchor = owner.GetComponent<GroundVisualAnchor>();
+            if (_groundVisualAnchor == null)
+                _groundVisualAnchor = owner.gameObject.AddComponent<GroundVisualAnchor>();
+
+            _groundVisualAnchor.Configure(owner.transform, null, 0.03f);
         }
 
         public void Stop()
@@ -45,7 +53,7 @@ namespace Villains.Movement
         public void FleeTo(Vector3 destination)
             => MoveTo(destination, fleeSpeed);
 
-        private void MoveTo(Vector3 destination, float speed)
+        public void MoveTo(Vector3 destination, float speed)
         {
             Vector3 direction = destination - _ownerTransform.position;
             direction.y = 0f;
@@ -100,6 +108,7 @@ namespace Villains.Movement
             _navMeshAgent.stoppingDistance = arriveDistance;
             _navMeshAgent.radius = _characterController != null ? _characterController.radius : 0.35f;
             _navMeshAgent.height = _characterController != null ? _characterController.height : 2f;
+            _navMeshAgent.baseOffset = 0f;
             _navMeshAgent.updateRotation = false;
         }
 
