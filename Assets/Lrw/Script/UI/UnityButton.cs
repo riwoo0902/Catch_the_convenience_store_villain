@@ -34,7 +34,7 @@ namespace Lrw.Script.UI
             _text = _tmp != null ? _tmp.text : "";
         }
 
-        private void Destroy()
+        private void OnDestroy()
         {
             _button?.onClick.RemoveListener(Invoke);
         }

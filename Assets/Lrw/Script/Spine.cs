@@ -1,5 +1,4 @@
-﻿using System;
-using UnityEngine;
+﻿using UnityEngine;
 
 namespace Lrw.Script
 {
@@ -18,6 +17,7 @@ namespace Lrw.Script
             transform.Rotate(Vector3.up, speed * Time.fixedDeltaTime);
             
         }
+        
         
     }
 }
