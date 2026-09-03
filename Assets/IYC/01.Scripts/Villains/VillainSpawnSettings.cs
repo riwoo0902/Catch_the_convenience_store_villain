@@ -16,6 +16,7 @@ namespace CWH.Villains
         [SerializeField] private GameObject _policeWeaponPrefab;
         [SerializeField] private GameObject _productDisturberVisualPrefab;
         [SerializeField] private GameObject _chefVillainVisualPrefab;
+        [SerializeField] private Projectile _spatulaProjectilePrefab;
         [SerializeField] private GameObject _spatulaProjectileVisualPrefab;
         [SerializeField] private ProjectileThrowDataSO _spatulaThrowData;
 
@@ -74,6 +75,7 @@ namespace CWH.Villains
         public GameObject PoliceWeaponPrefab => _policeWeaponPrefab;
         public GameObject ProductDisturberVisualPrefab => _productDisturberVisualPrefab != null ? _productDisturberVisualPrefab : _villainVisualPrefab;
         public GameObject ChefVillainVisualPrefab => _chefVillainVisualPrefab != null ? _chefVillainVisualPrefab : _villainVisualPrefab;
+        public Projectile SpatulaProjectilePrefab => _spatulaProjectilePrefab;
         public GameObject SpatulaProjectileVisualPrefab => _spatulaProjectileVisualPrefab;
         public ProjectileThrowDataSO SpatulaThrowData => _spatulaThrowData != null ? _spatulaThrowData : _throwData;
         public float VisualScale => _visualScale;

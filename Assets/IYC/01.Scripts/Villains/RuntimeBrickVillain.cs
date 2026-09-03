@@ -14,7 +14,10 @@ namespace CWH.Villains
         private VillainSpawnSettings _settings;
         private Transform _target;
         private ProjectileThrowDataSO _throwDataOverride;
+        private Projectile _projectilePrefabOverride;
         private GameObject _projectileVisualPrefabOverride;
+        private bool _useRuntimeProjectileOverride;
+        private bool _requiresProjectileOverride;
         private CharacterController _controller;
         private NavMeshAgent _navMeshAgent;
         private GroundVisualAnchor _groundVisualAnchor;
@@ -96,8 +99,32 @@ namespace CWH.Villains
 
         public void UseProjectileVisual(GameObject projectileVisualPrefab, ProjectileThrowDataSO throwData)
         {
-            _projectileVisualPrefabOverride = projectileVisualPrefab;
+            _projectileVisualPrefabOverride = IsInvalidProjectileVisual(projectileVisualPrefab)
+                ? null
+                : projectileVisualPrefab;
             _throwDataOverride = throwData;
+            _useRuntimeProjectileOverride = _projectileVisualPrefabOverride != null;
+            _requiresProjectileOverride = true;
+
+            if (projectileVisualPrefab != null && _projectileVisualPrefabOverride == null)
+            {
+                Debug.LogError($"{name} refused projectile visual '{projectileVisualPrefab.name}' because it looks like a Player/character prefab.");
+            }
+        }
+
+        public void UseProjectilePrefab(Projectile projectilePrefab, ProjectileThrowDataSO throwData)
+        {
+            _projectilePrefabOverride = IsInvalidProjectilePrefab(projectilePrefab)
+                ? null
+                : projectilePrefab;
+            _throwDataOverride = throwData;
+            _useRuntimeProjectileOverride = false;
+            _requiresProjectileOverride = true;
+
+            if (projectilePrefab != null && _projectilePrefabOverride == null)
+            {
+                Debug.LogError($"{name} refused projectile prefab '{projectilePrefab.name}' because it looks like a Player/character prefab.");
+            }
         }
 
         public void BeginFlee()
@@ -149,7 +176,8 @@ namespace CWH.Villains
 
             Vector3 toTarget = Flatten(_target.position - transform.position);
             float distance = toTarget.magnitude;
-            if (distance > _settings.PreferredAttackDistance)
+            float attackDistance = GetAttackDistance();
+            if (distance > attackDistance)
             {
                 FaceDirection(toTarget);
                 Move(toTarget.normalized * _settings.ChaseSpeed);
@@ -276,9 +304,17 @@ namespace CWH.Villains
             Vector3 targetPosition = _target.position + Vector3.up * 0.8f;
             Vector3 velocity = BuildInitialVelocity(spawnPosition, targetPosition, throwData);
 
-            Component projectile = _projectileVisualPrefabOverride != null
-                ? CreateRuntimeProjectile(spawnPosition, velocity)
-                : Instantiate(_settings.BrickPrefab, spawnPosition, Quaternion.LookRotation(velocity.normalized));
+            Component projectile = CreateProjectile(spawnPosition, velocity);
+            if (projectile == null || IsProjectileTarget(projectile.transform))
+            {
+                if (projectile != null)
+                {
+                    Destroy(projectile.gameObject);
+                }
+
+                Debug.LogError($"{name} tried to throw an invalid projectile. Check VillainSpawnSettings projectile prefab.");
+                return;
+            }
 
             if (projectile is BrickProjectile brickProjectile)
             {
@@ -306,7 +342,40 @@ namespace CWH.Villains
 
         private bool HasProjectileAsset()
         {
-            return _projectileVisualPrefabOverride != null || _settings.BrickPrefab != null;
+            if (_requiresProjectileOverride)
+            {
+                return _projectilePrefabOverride != null || _useRuntimeProjectileOverride;
+            }
+
+            return _projectilePrefabOverride != null || _useRuntimeProjectileOverride || _settings.BrickPrefab != null;
+        }
+
+        private float GetAttackDistance()
+        {
+            ProjectileThrowDataSO throwData = GetThrowData();
+            float dataRange = throwData != null ? throwData.attackRange : 0f;
+            return Mathf.Max(0.5f, dataRange > 0f ? dataRange : _settings.PreferredAttackDistance);
+        }
+
+        private Component CreateProjectile(Vector3 spawnPosition, Vector3 velocity)
+        {
+            Quaternion rotation = velocity.sqrMagnitude > 0.001f
+                ? Quaternion.LookRotation(velocity.normalized, Vector3.up)
+                : transform.rotation;
+
+            if (_projectilePrefabOverride != null)
+            {
+                return Instantiate(_projectilePrefabOverride, spawnPosition, rotation);
+            }
+
+            if (_requiresProjectileOverride)
+            {
+                return null;
+            }
+
+            return _useRuntimeProjectileOverride
+                ? CreateRuntimeProjectile(spawnPosition, velocity)
+                : Instantiate(_settings.BrickPrefab, spawnPosition, rotation);
         }
 
         private Projectile CreateRuntimeProjectile(Vector3 spawnPosition, Vector3 velocity)
@@ -327,12 +396,23 @@ namespace CWH.Villains
 
             Projectile projectile = projectileObject.AddComponent<Projectile>();
 
-            GameObject visual = Instantiate(_projectileVisualPrefabOverride, projectileObject.transform);
-            visual.name = "Spatula Visual";
-            visual.transform.SetLocalPositionAndRotation(
-                Vector3.zero,
-                Quaternion.Euler(_settings.SpatulaProjectileVisualLocalRotation));
-            visual.transform.localScale = _settings.SpatulaProjectileVisualLocalScale;
+            if (_projectileVisualPrefabOverride != null)
+            {
+                GameObject visual = Instantiate(_projectileVisualPrefabOverride, projectileObject.transform);
+                visual.name = "Spatula Visual";
+                visual.transform.SetLocalPositionAndRotation(
+                    Vector3.zero,
+                    Quaternion.Euler(_settings.SpatulaProjectileVisualLocalRotation));
+                visual.transform.localScale = _settings.SpatulaProjectileVisualLocalScale;
+            }
+            else
+            {
+                GameObject fallbackVisual = GameObject.CreatePrimitive(PrimitiveType.Cube);
+                fallbackVisual.name = "Spatula Visual Fallback";
+                Destroy(fallbackVisual.GetComponent<Collider>());
+                fallbackVisual.transform.SetParent(projectileObject.transform, false);
+                fallbackVisual.transform.localScale = new Vector3(0.08f, 0.02f, 0.75f);
+            }
 
             return projectile;
         }
@@ -445,6 +525,10 @@ namespace CWH.Villains
             {
                 destination = _reachedInsideExitWaypoint ? _outsideDoorPosition : _insideDoorPosition;
             }
+            else if (_isRoaming)
+            {
+                destination = _currentRoamDestination;
+            }
             else if (_target != null)
             {
                 destination = _target.position;
@@ -527,6 +611,41 @@ namespace CWH.Villains
         private static float FlatSqrDistance(Vector3 first, Vector3 second)
         {
             return Flatten(first - second).sqrMagnitude;
+        }
+
+        private bool IsProjectileTarget(Transform projectileTransform)
+        {
+            return projectileTransform != null
+                   && _target != null
+                   && projectileTransform.root == _target.root;
+        }
+
+        private static bool IsInvalidProjectilePrefab(Projectile projectilePrefab)
+        {
+            if (projectilePrefab == null)
+            {
+                return false;
+            }
+
+            Transform prefabTransform = projectilePrefab.transform;
+            string rootName = prefabTransform.root.name;
+            if (rootName.Contains("Player") || projectilePrefab.name.Contains("Player"))
+            {
+                return true;
+            }
+
+            return projectilePrefab.GetComponent<CharacterController>() != null;
+        }
+
+        private static bool IsInvalidProjectileVisual(GameObject projectileVisualPrefab)
+        {
+            if (projectileVisualPrefab == null)
+            {
+                return false;
+            }
+
+            return projectileVisualPrefab.name.Contains("Player")
+                   || projectileVisualPrefab.GetComponent<CharacterController>() != null;
         }
     }
 }

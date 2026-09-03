@@ -11852,6 +11852,9 @@ PrefabInstance:
     m_RemovedGameObjects: []
     m_AddedGameObjects: []
     m_AddedComponents:
+    - targetCorrespondingSourceObject: {fileID: 3195029996011813044, guid: 910ab69de9843074f9bdf35e85cc5bb9, type: 3}
+      insertIndex: -1
+      addedObject: {fileID: 3195029996147843946}
     - targetCorrespondingSourceObject: {fileID: 3195029996011812722, guid: 910ab69de9843074f9bdf35e85cc5bb9, type: 3}
       insertIndex: -1
       addedObject: {fileID: 1959046059}
@@ -12315,6 +12318,47 @@ PrefabInstance:
       insertIndex: -1
       addedObject: {fileID: 243059965}
   m_SourcePrefab: {fileID: 100100000, guid: 910ab69de9843074f9bdf35e85cc5bb9, type: 3}
+--- !u!4 &3195029996147843943 stripped
+Transform:
+  m_CorrespondingSourceObject: {fileID: 3195029996012301100, guid: 910ab69de9843074f9bdf35e85cc5bb9, type: 3}
+  m_PrefabInstance: {fileID: 3195029996147843942}
+  m_PrefabAsset: {fileID: 0}
+--- !u!4 &3195029996147843944 stripped
+Transform:
+  m_CorrespondingSourceObject: {fileID: 3195029996012301098, guid: 910ab69de9843074f9bdf35e85cc5bb9, type: 3}
+  m_PrefabInstance: {fileID: 3195029996147843942}
+  m_PrefabAsset: {fileID: 0}
+--- !u!1 &3195029996147843945 stripped
+GameObject:
+  m_CorrespondingSourceObject: {fileID: 3195029996011813044, guid: 910ab69de9843074f9bdf35e85cc5bb9, type: 3}
+  m_PrefabInstance: {fileID: 3195029996147843942}
+  m_PrefabAsset: {fileID: 0}
+--- !u!114 &3195029996147843946
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 3195029996147843945}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: da9a299adc353724792abf93dfd85c9f, type: 3}
+  m_Name: 
+  m_EditorClassIdentifier: Assembly-CSharp::AutoDoor
+  leftDoor: {fileID: 3195029996147843944}
+  rightDoor: {fileID: 3195029996147843943}
+  leftOpenLocalOffset: {x: -0.08, y: 0, z: 0}
+  rightOpenLocalOffset: {x: 0.08, y: 0, z: 0}
+  moveSpeed: 1.25
+  checkInterval: 0.15
+  boxCenterOffset: {x: 0, y: 0.06, z: 0.48}
+  boxHalfExtents: {x: 2.34, y: 1.1, z: 1.2}
+  boxCastDistance: 2.5
+  boxCastDirection: {x: 0, y: 0, z: 1}
+  detectionMask:
+    serializedVersion: 2
+    m_Bits: 4294967295
+  closeDelay: 0.25
 --- !u!33 &3244333138471356773
 MeshFilter:
   m_ObjectHideFlags: 0
