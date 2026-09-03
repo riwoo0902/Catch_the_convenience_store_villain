@@ -2,7 +2,11 @@ using Agents;
 using Agents.FSM;
 using UnityEditor;
 using UnityEditor.Animations;
+using UnityEditor.SceneManagement;
+using Unity.AI.Navigation;
 using UnityEngine;
+using UnityEngine.AI;
+using UnityEngine.SceneManagement;
 using Villains;
 using Villains.Animation;
 using Villains.Combat;
@@ -20,8 +24,13 @@ public static class VillainPrefabBuilder
     private const string StateListPath = "Assets/IYC/06.SO/Villains/Brick Villain State List.asset";
     private const string BrickThrowDataPath = "Assets/IYC/06.SO/Villains/Brick Throw Data.asset";
     private const string PickaxeThrowDataPath = "Assets/IYC/06.SO/Villains/Pickaxe Throw Data.asset";
+    private const string SpatulaThrowDataPath = "Assets/IYC/06.SO/Villains/Spatula Throw Data.asset";
     private const string BrickProjectilePath = "Assets/YKJ/Prefab/Brick.prefab";
     private const string PickaxeProjectilePath = "Assets/YKJ/Prefab/Pickaxe Projectile.prefab";
+    private const string SpatulaModelPath = "Assets/YKJ/Slotted Turner 202112-32.fbx";
+    private const string SpatulaProjectilePath = "Assets/YKJ/Prefab/Spatula Projectile.prefab";
+    private const string SpawnSettingsPath = "Assets/Resources/VillainSpawnSettings.asset";
+    private const string ConvenienceStoreScenePath = "Assets/IYC/00.Scene/ConvenienceStore.unity";
     private const string BrickOutputPath = "Assets/YKJ/Prefab/Brick Villain.prefab";
     private const string PickaxeOutputPath = "Assets/YKJ/Prefab/Pickaxe Villain.prefab";
 
@@ -30,10 +39,66 @@ public static class VillainPrefabBuilder
     {
         BuildBrickVillain();
         BuildPickaxeVillain();
+        BuildSpatulaProjectile();
+        WireSpawnSettings();
 
         AssetDatabase.SaveAssets();
         AssetDatabase.Refresh();
         Debug.Log("YKJ villain prefabs rebuilt.");
+    }
+
+    [MenuItem("Tools/Villains/Rebuild Spatula Projectile")]
+    public static void RebuildSpatulaProjectile()
+    {
+        BuildSpatulaProjectile();
+        WireSpawnSettings();
+        AssetDatabase.SaveAssets();
+        AssetDatabase.Refresh();
+        Debug.Log("Spatula projectile prefab rebuilt and wired.");
+    }
+
+    [MenuItem("Tools/Villains/Setup And Bake Convenience Store NavMesh")]
+    public static void SetupAndBakeConvenienceStoreNavMesh()
+    {
+        Scene activeScene = SceneManager.GetActiveScene();
+        if (activeScene.path != ConvenienceStoreScenePath)
+        {
+            if (EditorSceneManager.SaveCurrentModifiedScenesIfUserWantsTo())
+            {
+                activeScene = EditorSceneManager.OpenScene(ConvenienceStoreScenePath);
+            }
+            else
+            {
+                Debug.LogWarning("Convenience Store NavMesh setup canceled.");
+                return;
+            }
+        }
+
+        NavMeshSurface surface = Object.FindFirstObjectByType<NavMeshSurface>();
+        if (surface == null)
+        {
+            GameObject surfaceObject = new GameObject("Convenience Store NavMesh Surface");
+            surface = surfaceObject.AddComponent<NavMeshSurface>();
+        }
+
+        surface.agentTypeID = 0;
+        surface.collectObjects = CollectObjects.All;
+        surface.layerMask = ~0;
+        surface.useGeometry = NavMeshCollectGeometry.PhysicsColliders;
+        surface.defaultArea = 0;
+        surface.ignoreNavMeshAgent = true;
+        surface.ignoreNavMeshObstacle = true;
+        surface.overrideVoxelSize = true;
+        surface.voxelSize = 0.08f;
+        surface.minRegionArea = 0.35f;
+
+        surface.BuildNavMesh();
+        EditorUtility.SetDirty(surface);
+        EditorSceneManager.MarkSceneDirty(activeScene);
+        EditorSceneManager.SaveScene(activeScene);
+        AssetDatabase.SaveAssets();
+        AssetDatabase.Refresh();
+        Debug.Log("Convenience Store NavMesh surface baked.");
     }
 
     private static void BuildBrickVillain()
@@ -96,6 +161,68 @@ public static class VillainPrefabBuilder
         {
             PrefabUtility.UnloadPrefabContents(root);
         }
+    }
+
+    private static void BuildSpatulaProjectile()
+    {
+        GameObject spatulaModel = AssetDatabase.LoadAssetAtPath<GameObject>(SpatulaModelPath);
+        if (spatulaModel == null)
+        {
+            throw new System.InvalidOperationException($"Spatula model was not found: {SpatulaModelPath}");
+        }
+
+        GameObject root = new GameObject("Spatula Projectile");
+        try
+        {
+            BoxCollider collider = root.AddComponent<BoxCollider>();
+            collider.size = new Vector3(0.65f, 0.12f, 0.3f);
+
+            Rigidbody rigidbody = root.AddComponent<Rigidbody>();
+            rigidbody.mass = 0.6f;
+            rigidbody.angularDamping = 0.02f;
+            rigidbody.collisionDetectionMode = CollisionDetectionMode.ContinuousDynamic;
+
+            Projectile projectile = root.AddComponent<Projectile>();
+            SerializedObject serializedProjectile = new SerializedObject(projectile);
+            serializedProjectile.FindProperty("spinAxis").vector3Value = Vector3.forward;
+            serializedProjectile.FindProperty("spinSpeed").floatValue = 1080f;
+            serializedProjectile.FindProperty("disturbShelfProductsOnHit").boolValue = true;
+            serializedProjectile.ApplyModifiedPropertiesWithoutUndo();
+
+            GameObject visual = (GameObject)PrefabUtility.InstantiatePrefab(spatulaModel, root.transform);
+            visual.name = "Spatula Visual";
+            visual.transform.SetLocalPositionAndRotation(Vector3.zero, Quaternion.Euler(0f, 90f, 0f));
+            visual.transform.localScale = Vector3.one * 0.12f;
+
+            SavePrefab(root, SpatulaProjectilePath);
+        }
+        finally
+        {
+            Object.DestroyImmediate(root);
+        }
+    }
+
+    private static void WireSpawnSettings()
+    {
+        CWH.Villains.VillainSpawnSettings settings =
+            AssetDatabase.LoadAssetAtPath<CWH.Villains.VillainSpawnSettings>(SpawnSettingsPath);
+        if (settings == null)
+        {
+            Debug.LogWarning($"VillainSpawnSettings was not found: {SpawnSettingsPath}");
+            return;
+        }
+
+        Projectile spatulaProjectile = LoadProjectile(SpatulaProjectilePath);
+        GameObject spatulaModel = AssetDatabase.LoadAssetAtPath<GameObject>(SpatulaModelPath);
+        ProjectileThrowDataSO spatulaThrowData = AssetDatabase.LoadAssetAtPath<ProjectileThrowDataSO>(SpatulaThrowDataPath);
+
+        SerializedObject serializedObject = new SerializedObject(settings);
+        serializedObject.FindProperty("_spatulaProjectilePrefab").objectReferenceValue = spatulaProjectile;
+        serializedObject.FindProperty("_spatulaProjectileVisualPrefab").objectReferenceValue = spatulaModel;
+        serializedObject.FindProperty("_spatulaThrowData").objectReferenceValue = spatulaThrowData;
+        serializedObject.FindProperty("_chefVillainSpawnChance").floatValue = 1f;
+        serializedObject.ApplyModifiedPropertiesWithoutUndo();
+        EditorUtility.SetDirty(settings);
     }
 
     private static void ConfigureSharedVillainRoot(GameObject root)

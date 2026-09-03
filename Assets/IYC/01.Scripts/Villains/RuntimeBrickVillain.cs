@@ -2,6 +2,7 @@ using UnityEngine;
 using UnityEngine.AI;
 using Villains.Data;
 using Villains.Projectiles;
+using Villains.Visuals;
 
 namespace CWH.Villains
 {
@@ -12,19 +13,31 @@ namespace CWH.Villains
 
         private VillainSpawnSettings _settings;
         private Transform _target;
+        private ProjectileThrowDataSO _throwDataOverride;
+        private Projectile _projectilePrefabOverride;
+        private GameObject _projectileVisualPrefabOverride;
+        private bool _useRuntimeProjectileOverride;
+        private bool _requiresProjectileOverride;
         private CharacterController _controller;
         private NavMeshAgent _navMeshAgent;
+        private GroundVisualAnchor _groundVisualAnchor;
         private Animator _animator;
         private Vector3 _insideDoorPosition;
         private Vector3 _outsideDoorPosition;
+        private Transform[] _roamPoints = new Transform[0];
+        private Vector3 _currentRoamDestination;
         private float _verticalVelocity;
         private float _nextThrowTime;
         private float _fleeStartedTime;
         private float _animationLockedUntil;
         private float _pendingThrowTime;
+        private float _mischiefStartTime;
+        private float _nextRoamDecisionTime;
         private string _currentAnimation;
         private bool _isEntering;
         private bool _isFleeing;
+        private bool _isRoaming;
+        private bool _hasRoamDestination;
         private bool _reachedInsideExitWaypoint;
         private bool _hasPendingThrow;
 
@@ -34,13 +47,19 @@ namespace CWH.Villains
             VillainSpawnSettings settings,
             Transform target,
             Vector3 insideDoorPosition,
-            Vector3 outsideDoorPosition)
+            Vector3 outsideDoorPosition,
+            bool enterFromOutside,
+            float mischiefDelay,
+            Transform[] roamPoints)
         {
             _settings = settings;
             _target = target;
             _insideDoorPosition = insideDoorPosition;
             _outsideDoorPosition = outsideDoorPosition;
-            _isEntering = true;
+            _isEntering = enterFromOutside;
+            _isRoaming = !enterFromOutside || mischiefDelay > 0f;
+            _mischiefStartTime = Time.time + Mathf.Max(0f, mischiefDelay);
+            _roamPoints = roamPoints ?? new Transform[0];
             _nextThrowTime = Time.time + 0.8f;
 
             _controller = GetComponent<CharacterController>();
@@ -61,6 +80,14 @@ namespace CWH.Villains
 
             ConfigureNavMeshAgent(settings.ChaseSpeed);
 
+            _groundVisualAnchor = GetComponent<GroundVisualAnchor>();
+            if (_groundVisualAnchor == null)
+            {
+                _groundVisualAnchor = gameObject.AddComponent<GroundVisualAnchor>();
+            }
+
+            _groundVisualAnchor.Configure(transform, null, 0.03f);
+
             _animator = GetComponentInChildren<Animator>();
             if (_animator != null && settings.AnimatorController != null)
             {
@@ -68,6 +95,36 @@ namespace CWH.Villains
             }
 
             PlayAnimation("Run", 0f);
+        }
+
+        public void UseProjectileVisual(GameObject projectileVisualPrefab, ProjectileThrowDataSO throwData)
+        {
+            _projectileVisualPrefabOverride = IsInvalidProjectileVisual(projectileVisualPrefab)
+                ? null
+                : projectileVisualPrefab;
+            _throwDataOverride = throwData;
+            _useRuntimeProjectileOverride = _projectileVisualPrefabOverride != null;
+            _requiresProjectileOverride = true;
+
+            if (projectileVisualPrefab != null && _projectileVisualPrefabOverride == null)
+            {
+                Debug.LogError($"{name} refused projectile visual '{projectileVisualPrefab.name}' because it looks like a Player/character prefab.");
+            }
+        }
+
+        public void UseProjectilePrefab(Projectile projectilePrefab, ProjectileThrowDataSO throwData)
+        {
+            _projectilePrefabOverride = IsInvalidProjectilePrefab(projectilePrefab)
+                ? null
+                : projectilePrefab;
+            _throwDataOverride = throwData;
+            _useRuntimeProjectileOverride = false;
+            _requiresProjectileOverride = true;
+
+            if (projectilePrefab != null && _projectilePrefabOverride == null)
+            {
+                Debug.LogError($"{name} refused projectile prefab '{projectilePrefab.name}' because it looks like a Player/character prefab.");
+            }
         }
 
         public void BeginFlee()
@@ -105,6 +162,12 @@ namespace CWH.Villains
                 return;
             }
 
+            if (_isRoaming)
+            {
+                UpdateRoaming();
+                return;
+            }
+
             if (_target == null)
             {
                 BeginFlee();
@@ -113,7 +176,8 @@ namespace CWH.Villains
 
             Vector3 toTarget = Flatten(_target.position - transform.position);
             float distance = toTarget.magnitude;
-            if (distance > _settings.PreferredAttackDistance)
+            float attackDistance = GetAttackDistance();
+            if (distance > attackDistance)
             {
                 FaceDirection(toTarget);
                 Move(toTarget.normalized * _settings.ChaseSpeed);
@@ -124,7 +188,7 @@ namespace CWH.Villains
                 FaceDirection(toTarget);
                 Move(Vector3.zero);
                 UpdatePendingThrow();
-                TryThrowBrick();
+                TryThrowProjectile();
                 if (Time.time >= _animationLockedUntil)
                 {
                     PlayAnimation("Idle", 0.12f);
@@ -138,6 +202,7 @@ namespace CWH.Villains
             if (toInsideDoor.sqrMagnitude < 0.5f)
             {
                 _isEntering = false;
+                _isRoaming = Time.time < _mischiefStartTime;
                 return;
             }
 
@@ -146,11 +211,61 @@ namespace CWH.Villains
             PlayAnimation("Run", 0.1f);
         }
 
-        private void TryThrowBrick()
+        private void UpdateRoaming()
         {
-            BrickThrowDataSO throwData = _settings.ThrowData;
-            BrickProjectile brickPrefab = _settings.BrickPrefab;
-            if (throwData == null || brickPrefab == null || _hasPendingThrow || Time.time < _nextThrowTime)
+            if (Time.time >= _mischiefStartTime)
+            {
+                _isRoaming = false;
+                _hasRoamDestination = false;
+                Move(Vector3.zero);
+                PlayAnimation("Idle", 0.1f);
+                return;
+            }
+
+            if (!_hasRoamDestination
+                || Time.time >= _nextRoamDecisionTime
+                || FlatSqrDistance(transform.position, _currentRoamDestination) <= _settings.RoamPointReachDistance * _settings.RoamPointReachDistance)
+            {
+                PickNextRoamDestination();
+            }
+
+            Vector3 toRoamDestination = Flatten(_currentRoamDestination - transform.position);
+            if (toRoamDestination.sqrMagnitude <= 0.001f)
+            {
+                Move(Vector3.zero);
+                PlayAnimation("Idle", 0.1f);
+                return;
+            }
+
+            FaceDirection(toRoamDestination);
+            Move(toRoamDestination.normalized * _settings.RoamSpeed);
+            PlayAnimation("Run", 0.1f);
+        }
+
+        private void PickNextRoamDestination()
+        {
+            if (_roamPoints.Length > 0)
+            {
+                Transform point = _roamPoints[Random.Range(0, _roamPoints.Length)];
+                if (point != null)
+                {
+                    _currentRoamDestination = point.position;
+                    _hasRoamDestination = true;
+                    _nextRoamDecisionTime = Time.time + Random.Range(_settings.MinimumRoamWait, _settings.MaximumRoamWait);
+                    return;
+                }
+            }
+
+            Vector2 randomCircle = Random.insideUnitCircle * _settings.FallbackRoamRadius;
+            _currentRoamDestination = transform.position + new Vector3(randomCircle.x, 0f, randomCircle.y);
+            _hasRoamDestination = true;
+            _nextRoamDecisionTime = Time.time + Random.Range(_settings.MinimumRoamWait, _settings.MaximumRoamWait);
+        }
+
+        private void TryThrowProjectile()
+        {
+            ProjectileThrowDataSO throwData = GetThrowData();
+            if (throwData == null || !HasProjectileAsset() || _hasPendingThrow || Time.time < _nextThrowTime)
             {
                 return;
             }
@@ -171,14 +286,13 @@ namespace CWH.Villains
             }
 
             _hasPendingThrow = false;
-            ReleaseBrick();
+            ReleaseProjectile();
         }
 
-        private void ReleaseBrick()
+        private void ReleaseProjectile()
         {
-            BrickThrowDataSO throwData = _settings.ThrowData;
-            BrickProjectile brickPrefab = _settings.BrickPrefab;
-            if (throwData == null || brickPrefab == null || _target == null)
+            ProjectileThrowDataSO throwData = GetThrowData();
+            if (throwData == null || !HasProjectileAsset() || _target == null)
             {
                 return;
             }
@@ -189,11 +303,27 @@ namespace CWH.Villains
                                     + transform.forward * (0.75f * visualScale);
             Vector3 targetPosition = _target.position + Vector3.up * 0.8f;
             Vector3 velocity = BuildInitialVelocity(spawnPosition, targetPosition, throwData);
-            BrickProjectile projectile = Instantiate(
-                brickPrefab,
-                spawnPosition,
-                Quaternion.LookRotation(velocity.normalized));
-            projectile.InitProjectile(null, throwData.damage, throwData.projectileLifeTime, velocity, 0);
+
+            Component projectile = CreateProjectile(spawnPosition, velocity);
+            if (projectile == null || IsProjectileTarget(projectile.transform))
+            {
+                if (projectile != null)
+                {
+                    Destroy(projectile.gameObject);
+                }
+
+                Debug.LogError($"{name} tried to throw an invalid projectile. Check VillainSpawnSettings projectile prefab.");
+                return;
+            }
+
+            if (projectile is BrickProjectile brickProjectile)
+            {
+                brickProjectile.InitProjectile(null, throwData.damage, throwData.projectileLifeTime, velocity, 0);
+            }
+            else if (projectile is Projectile genericProjectile)
+            {
+                genericProjectile.InitProjectile(null, throwData.damage, throwData.projectileLifeTime, velocity, 0);
+            }
 
             Collider projectileCollider = projectile.GetComponent<Collider>();
             if (projectileCollider != null)
@@ -205,10 +335,92 @@ namespace CWH.Villains
             }
         }
 
+        private ProjectileThrowDataSO GetThrowData()
+        {
+            return _throwDataOverride != null ? _throwDataOverride : _settings.ThrowData;
+        }
+
+        private bool HasProjectileAsset()
+        {
+            if (_requiresProjectileOverride)
+            {
+                return _projectilePrefabOverride != null || _useRuntimeProjectileOverride;
+            }
+
+            return _projectilePrefabOverride != null || _useRuntimeProjectileOverride || _settings.BrickPrefab != null;
+        }
+
+        private float GetAttackDistance()
+        {
+            ProjectileThrowDataSO throwData = GetThrowData();
+            float dataRange = throwData != null ? throwData.attackRange : 0f;
+            return Mathf.Max(0.5f, dataRange > 0f ? dataRange : _settings.PreferredAttackDistance);
+        }
+
+        private Component CreateProjectile(Vector3 spawnPosition, Vector3 velocity)
+        {
+            Quaternion rotation = velocity.sqrMagnitude > 0.001f
+                ? Quaternion.LookRotation(velocity.normalized, Vector3.up)
+                : transform.rotation;
+
+            if (_projectilePrefabOverride != null)
+            {
+                return Instantiate(_projectilePrefabOverride, spawnPosition, rotation);
+            }
+
+            if (_requiresProjectileOverride)
+            {
+                return null;
+            }
+
+            return _useRuntimeProjectileOverride
+                ? CreateRuntimeProjectile(spawnPosition, velocity)
+                : Instantiate(_settings.BrickPrefab, spawnPosition, rotation);
+        }
+
+        private Projectile CreateRuntimeProjectile(Vector3 spawnPosition, Vector3 velocity)
+        {
+            Quaternion rotation = velocity.sqrMagnitude > 0.001f
+                ? Quaternion.LookRotation(velocity.normalized, Vector3.up)
+                : transform.rotation;
+
+            GameObject projectileObject = new("Spatula Projectile");
+            projectileObject.transform.SetPositionAndRotation(spawnPosition, rotation);
+
+            BoxCollider collider = projectileObject.AddComponent<BoxCollider>();
+            collider.size = _settings.SpatulaProjectileColliderSize;
+
+            Rigidbody rigidbody = projectileObject.AddComponent<Rigidbody>();
+            rigidbody.mass = 0.6f;
+            rigidbody.angularDamping = 0.02f;
+
+            Projectile projectile = projectileObject.AddComponent<Projectile>();
+
+            if (_projectileVisualPrefabOverride != null)
+            {
+                GameObject visual = Instantiate(_projectileVisualPrefabOverride, projectileObject.transform);
+                visual.name = "Spatula Visual";
+                visual.transform.SetLocalPositionAndRotation(
+                    Vector3.zero,
+                    Quaternion.Euler(_settings.SpatulaProjectileVisualLocalRotation));
+                visual.transform.localScale = _settings.SpatulaProjectileVisualLocalScale;
+            }
+            else
+            {
+                GameObject fallbackVisual = GameObject.CreatePrimitive(PrimitiveType.Cube);
+                fallbackVisual.name = "Spatula Visual Fallback";
+                Destroy(fallbackVisual.GetComponent<Collider>());
+                fallbackVisual.transform.SetParent(projectileObject.transform, false);
+                fallbackVisual.transform.localScale = new Vector3(0.08f, 0.02f, 0.75f);
+            }
+
+            return projectile;
+        }
+
         private static Vector3 BuildInitialVelocity(
             Vector3 origin,
             Vector3 targetPosition,
-            BrickThrowDataSO throwData)
+            ProjectileThrowDataSO throwData)
         {
             Vector3 offset = targetPosition - origin;
             Vector3 flatOffset = Flatten(offset);
@@ -313,6 +525,10 @@ namespace CWH.Villains
             {
                 destination = _reachedInsideExitWaypoint ? _outsideDoorPosition : _insideDoorPosition;
             }
+            else if (_isRoaming)
+            {
+                destination = _currentRoamDestination;
+            }
             else if (_target != null)
             {
                 destination = _target.position;
@@ -326,6 +542,8 @@ namespace CWH.Villains
             ConfigureNavMeshAgent(speed);
             _navMeshAgent.stoppingDistance = _isEntering || _isFleeing
                 ? 0.4f
+                : _isRoaming
+                    ? _settings.RoamPointReachDistance
                 : Mathf.Max(0.4f, _settings.PreferredAttackDistance * 0.85f);
             _navMeshAgent.SetDestination(destinationHit.position);
 
@@ -351,6 +569,7 @@ namespace CWH.Villains
             _navMeshAgent.stoppingDistance = 0.4f;
             _navMeshAgent.radius = _controller != null ? _controller.radius : 0.32f;
             _navMeshAgent.height = _controller != null ? _controller.height : 1.8f;
+            _navMeshAgent.baseOffset = 0f;
             _navMeshAgent.updateRotation = false;
         }
 
@@ -392,6 +611,41 @@ namespace CWH.Villains
         private static float FlatSqrDistance(Vector3 first, Vector3 second)
         {
             return Flatten(first - second).sqrMagnitude;
+        }
+
+        private bool IsProjectileTarget(Transform projectileTransform)
+        {
+            return projectileTransform != null
+                   && _target != null
+                   && projectileTransform.root == _target.root;
+        }
+
+        private static bool IsInvalidProjectilePrefab(Projectile projectilePrefab)
+        {
+            if (projectilePrefab == null)
+            {
+                return false;
+            }
+
+            Transform prefabTransform = projectilePrefab.transform;
+            string rootName = prefabTransform.root.name;
+            if (rootName.Contains("Player") || projectilePrefab.name.Contains("Player"))
+            {
+                return true;
+            }
+
+            return projectilePrefab.GetComponent<CharacterController>() != null;
+        }
+
+        private static bool IsInvalidProjectileVisual(GameObject projectileVisualPrefab)
+        {
+            if (projectileVisualPrefab == null)
+            {
+                return false;
+            }
+
+            return projectileVisualPrefab.name.Contains("Player")
+                   || projectileVisualPrefab.GetComponent<CharacterController>() != null;
         }
     }
 }

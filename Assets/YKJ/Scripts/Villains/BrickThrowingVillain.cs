@@ -3,6 +3,7 @@ using Agents.FSM;
 using Player;
 using UnityEngine;
 using UnityEngine.AI;
+using Villains.Visuals;
 
 namespace Villains
 {
@@ -35,6 +36,7 @@ namespace Villains
         private StateMachine _stateMachine;
         private CharacterController _characterController;
         private NavMeshAgent _navMeshAgent;
+        private GroundVisualAnchor _groundVisualAnchor;
         private float _lastThrowTime = -999f;
         private bool _isFleeing;
 
@@ -53,6 +55,12 @@ namespace Villains
                 _navMeshAgent = gameObject.AddComponent<NavMeshAgent>();
 
             ConfigureNavMeshAgent(moveSpeed, 0.4f);
+
+            _groundVisualAnchor = GetComponent<GroundVisualAnchor>();
+            if (_groundVisualAnchor == null)
+                _groundVisualAnchor = gameObject.AddComponent<GroundVisualAnchor>();
+
+            _groundVisualAnchor.Configure(transform, null, 0.03f);
 
             if (findPlayerOnStart && target == null)
             {
@@ -214,6 +222,7 @@ namespace Villains
             _navMeshAgent.stoppingDistance = stoppingDistance;
             _navMeshAgent.radius = _characterController != null ? _characterController.radius : 0.35f;
             _navMeshAgent.height = _characterController != null ? _characterController.height : 2f;
+            _navMeshAgent.baseOffset = 0f;
             _navMeshAgent.updateRotation = false;
         }
     }

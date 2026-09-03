@@ -9,6 +9,7 @@ namespace CWH.Villains
     public sealed class ConvenienceStoreVillainSpawner : MonoBehaviour
     {
         private const string SettingsResourceName = "VillainSpawnSettings";
+        private const string ConvenienceStoreScenePath = "Assets/IYC/00.Scene/ConvenienceStore.unity";
         private static readonly string[] EntranceDoorNames =
         {
             "automaticDoor_L_gp",
@@ -21,25 +22,56 @@ namespace CWH.Villains
         private PlayerHealth _playerHealth;
         private Vector3 _insideDoorPosition;
         private Vector3 _outsideDoorPosition;
+        private Transform[] _spawnPoints = new Transform[0];
+        private Transform[] _roamPoints = new Transform[0];
 
         [RuntimeInitializeOnLoadMethod(RuntimeInitializeLoadType.AfterSceneLoad)]
         private static void InstallInConvenienceStore()
         {
-            Scene activeScene = SceneManager.GetActiveScene();
-            if (!activeScene.name.Contains("ConvenienceStore")
-                || FindFirstObjectByType<ConvenienceStoreVillainSpawner>() != null)
+            TryInstallInCurrentScene();
+            SceneManager.sceneLoaded -= HandleSceneLoaded;
+            SceneManager.sceneLoaded += HandleSceneLoaded;
+        }
+
+        private static void HandleSceneLoaded(Scene scene, LoadSceneMode mode)
+        {
+            TryInstallInCurrentScene();
+        }
+
+        private static void TryInstallInCurrentScene()
+        {
+            if (FindFirstObjectByType<ConvenienceStoreVillainSpawner>() != null)
             {
                 return;
             }
 
-            GameObject player = GameObject.Find("Player");
-            if (player == null)
+            Scene activeScene = SceneManager.GetActiveScene();
+            if (!IsConvenienceStoreScene(activeScene))
             {
+                return;
+            }
+
+            VillainSpawnSettings settings = Resources.Load<VillainSpawnSettings>(SettingsResourceName);
+            GameObject player = FindPlayerObject();
+            if (settings == null || player == null)
+            {
+                Debug.LogWarning($"Villain spawner install skipped. settings: {settings != null}, player: {player != null}");
                 return;
             }
 
             GameObject spawnerObject = new("Convenience Store Villain Spawner");
             spawnerObject.AddComponent<ConvenienceStoreVillainSpawner>();
+            Debug.Log("Convenience Store Villain Spawner installed.");
+        }
+
+        private static bool IsConvenienceStoreScene(Scene scene)
+        {
+            return scene.path == ConvenienceStoreScenePath
+                   || scene.name.Contains("ConvenienceStore")
+                   || scene.name.Contains("Convenience Store")
+                   || FindFirstObjectByType<VillainSpawnPoint>() != null
+                   || GameObject.Find(EntranceDoorNames[0]) != null
+                   || GameObject.Find(EntranceDoorNames[1]) != null;
         }
 
         public static void RequestAllVillainsFlee()
@@ -60,6 +92,14 @@ namespace CWH.Villains
                 villain.BeginFlee();
             }
 
+            RuntimeProductDisturberVillain[] productDisturbers = FindObjectsByType<RuntimeProductDisturberVillain>(
+                FindObjectsInactive.Exclude,
+                FindObjectsSortMode.None);
+            foreach (RuntimeProductDisturberVillain villain in productDisturbers)
+            {
+                villain.BeginFlee();
+            }
+
             global::Villains.BrickThrowingVillain[] legacyVillains = FindObjectsByType<global::Villains.BrickThrowingVillain>(
                 FindObjectsInactive.Exclude,
                 FindObjectsSortMode.None);
@@ -72,7 +112,7 @@ namespace CWH.Villains
         private void Awake()
         {
             _settings = Resources.Load<VillainSpawnSettings>(SettingsResourceName);
-            GameObject playerObject = GameObject.Find("Player");
+            GameObject playerObject = FindPlayerObject();
             _player = playerObject != null ? playerObject.transform : null;
             _playerHealth = PlayerHealth.GetOrCreate();
 
@@ -87,8 +127,20 @@ namespace CWH.Villains
             }
 
             ResolveDoorWaypoints();
+            ResolveScenePoints();
             _playerHealth.Died += HandlePlayerDied;
+            StartCoroutine(SpawnFirstVillainAfterFrame());
             StartCoroutine(SpawnLoop());
+        }
+
+        private IEnumerator SpawnFirstVillainAfterFrame()
+        {
+            yield return null;
+
+            if (enabled && _player != null && _playerHealth != null && !_playerHealth.IsDead)
+            {
+                SpawnVillain();
+            }
         }
 
         private IEnumerator SpawnLoop()
@@ -107,7 +159,15 @@ namespace CWH.Villains
 
         private void SpawnVillain()
         {
-            Vector3 entryDirection = Flatten(_insideDoorPosition - _outsideDoorPosition);
+            bool useCustomSpawnPoint = TryGetRandomPoint(_spawnPoints, out Vector3 spawnPosition);
+            if (useCustomSpawnPoint)
+            {
+                spawnPosition = ResolveSpawnHeight(spawnPosition);
+            }
+
+            Vector3 entryDirection = useCustomSpawnPoint
+                ? ResolveInitialFacing(spawnPosition)
+                : Flatten(_insideDoorPosition - _outsideDoorPosition);
             if (entryDirection.sqrMagnitude < 0.001f)
             {
                 entryDirection = Flatten(_player.position - _outsideDoorPosition);
@@ -117,22 +177,241 @@ namespace CWH.Villains
                 ? entryDirection.normalized
                 : Vector3.forward;
 
+            float mischiefDelay = Random.Range(_settings.MinimumMischiefDelay, _settings.MaximumMischiefDelay);
+            if (ShouldSpawnChefVillain())
+            {
+                Debug.Log($"Spawning Chef Spatula Villain at {spawnPosition}");
+                SpawnChefVillain(
+                    useCustomSpawnPoint,
+                    useCustomSpawnPoint ? spawnPosition : _outsideDoorPosition,
+                    entryDirection,
+                    mischiefDelay);
+                return;
+            }
+
+            if (ShouldSpawnProductDisturber())
+            {
+                Debug.Log($"Spawning Product Disturber Villain at {spawnPosition}");
+                SpawnProductDisturber(
+                    useCustomSpawnPoint,
+                    useCustomSpawnPoint ? spawnPosition : _outsideDoorPosition,
+                    entryDirection,
+                    mischiefDelay);
+                return;
+            }
+
             GameObject villainObject = Instantiate(
                 _settings.VillainVisualPrefab,
-                _outsideDoorPosition,
+                useCustomSpawnPoint ? spawnPosition : _outsideDoorPosition,
                 Quaternion.LookRotation(entryDirection, Vector3.up));
             villainObject.name = "Brick Villain";
+            Debug.Log($"Spawning Brick Villain at {villainObject.transform.position}");
 
             global::Villains.BrickVillain fsmVillain = villainObject.GetComponent<global::Villains.BrickVillain>();
             if (fsmVillain != null)
             {
                 fsmVillain.SetFallbackFleeDestination(_outsideDoorPosition);
+                RuntimeVillainRoamer roamer = villainObject.GetComponent<RuntimeVillainRoamer>();
+                if (roamer == null)
+                {
+                    roamer = villainObject.AddComponent<RuntimeVillainRoamer>();
+                }
+
+                roamer.Configure(fsmVillain, _settings, _roamPoints, mischiefDelay);
                 return;
             }
 
             villainObject.transform.localScale = Vector3.one * _settings.VisualScale;
             RuntimeBrickVillain villain = villainObject.AddComponent<RuntimeBrickVillain>();
-            villain.Initialize(_settings, _player, _insideDoorPosition, _outsideDoorPosition);
+            villain.Initialize(
+                _settings,
+                _player,
+                _insideDoorPosition,
+                _outsideDoorPosition,
+                !useCustomSpawnPoint,
+                mischiefDelay,
+                _roamPoints);
+        }
+
+        private bool ShouldSpawnChefVillain()
+        {
+            return _settings.ChefVillainVisualPrefab != null
+                   && _settings.SpatulaProjectileVisualPrefab != null
+                   && _settings.SpatulaThrowData != null
+                   && Random.value <= _settings.ChefVillainSpawnChance;
+        }
+
+        private void SpawnChefVillain(
+            bool spawnedInside,
+            Vector3 spawnPosition,
+            Vector3 entryDirection,
+            float mischiefDelay)
+        {
+            GameObject villainObject = Instantiate(
+                _settings.ChefVillainVisualPrefab,
+                spawnPosition,
+                Quaternion.LookRotation(entryDirection, Vector3.up));
+            villainObject.name = "Chef Spatula Villain";
+
+            villainObject.transform.localScale = Vector3.one * _settings.VisualScale;
+            RuntimeBrickVillain villain = villainObject.GetComponent<RuntimeBrickVillain>();
+            if (villain == null)
+            {
+                villain = villainObject.AddComponent<RuntimeBrickVillain>();
+            }
+
+            villain.UseProjectileVisual(_settings.SpatulaProjectileVisualPrefab, _settings.SpatulaThrowData);
+            villain.Initialize(
+                _settings,
+                _player,
+                _insideDoorPosition,
+                _outsideDoorPosition,
+                !spawnedInside,
+                0f,
+                _roamPoints);
+        }
+
+        private bool ShouldSpawnProductDisturber()
+        {
+            return _settings.ProductDisturberVisualPrefab != null
+                   && Random.value <= _settings.ProductDisturberSpawnChance;
+        }
+
+        private void SpawnProductDisturber(
+            bool spawnedInside,
+            Vector3 spawnPosition,
+            Vector3 entryDirection,
+            float mischiefDelay)
+        {
+            GameObject disturberObject = Instantiate(
+                _settings.ProductDisturberVisualPrefab,
+                spawnPosition,
+                Quaternion.LookRotation(entryDirection, Vector3.up));
+            disturberObject.name = "Product Disturber Villain";
+
+            if (disturberObject.GetComponent<global::Villains.BrickVillain>() != null)
+            {
+                Destroy(disturberObject.GetComponent<global::Villains.BrickVillain>());
+            }
+
+            disturberObject.transform.localScale = Vector3.one * _settings.VisualScale;
+            RuntimeProductDisturberVillain disturber = disturberObject.GetComponent<RuntimeProductDisturberVillain>();
+            if (disturber == null)
+            {
+                disturber = disturberObject.AddComponent<RuntimeProductDisturberVillain>();
+            }
+
+            disturber.Initialize(
+                _settings,
+                _insideDoorPosition,
+                _outsideDoorPosition,
+                !spawnedInside,
+                mischiefDelay,
+                _roamPoints);
+        }
+
+        private void ResolveScenePoints()
+        {
+            VillainSpawnPoint[] spawnPoints = FindObjectsByType<VillainSpawnPoint>(
+                FindObjectsInactive.Exclude,
+                FindObjectsSortMode.None);
+            _spawnPoints = ExtractTransforms(spawnPoints);
+
+            VillainRoamPoint[] roamPoints = FindObjectsByType<VillainRoamPoint>(
+                FindObjectsInactive.Exclude,
+                FindObjectsSortMode.None);
+            _roamPoints = ExtractTransforms(roamPoints);
+            Debug.Log($"Villain spawner found {_spawnPoints.Length} spawn points and {_roamPoints.Length} roam points.");
+        }
+
+        private static Transform[] ExtractTransforms<T>(T[] points)
+            where T : Component
+        {
+            if (points == null || points.Length == 0)
+            {
+                return new Transform[0];
+            }
+
+            Transform[] transforms = new Transform[points.Length];
+            for (int i = 0; i < points.Length; i++)
+            {
+                transforms[i] = points[i].transform;
+            }
+
+            return transforms;
+        }
+
+        private static bool TryGetRandomPoint(Transform[] points, out Vector3 position)
+        {
+            position = default;
+            if (points == null || points.Length == 0)
+            {
+                return false;
+            }
+
+            Transform point = points[Random.Range(0, points.Length)];
+            if (point == null)
+            {
+                return false;
+            }
+
+            position = point.position;
+            return true;
+        }
+
+        private Vector3 ResolveInitialFacing(Vector3 spawnPosition)
+        {
+            if (TryGetRandomPoint(_roamPoints, out Vector3 roamPosition))
+            {
+                return Flatten(roamPosition - spawnPosition);
+            }
+
+            return _player != null
+                ? Flatten(_player.position - spawnPosition)
+                : Vector3.forward;
+        }
+
+        private Vector3 ResolveSpawnHeight(Vector3 spawnPosition)
+        {
+            float footHeight = FindPlayerFootHeight();
+            if (Mathf.Abs(spawnPosition.y - footHeight) > 2f)
+            {
+                spawnPosition.y = footHeight;
+            }
+
+            return spawnPosition;
+        }
+
+        private static GameObject FindPlayerObject()
+        {
+            GameObject namedPlayer = GameObject.Find("Player");
+            if (namedPlayer != null)
+            {
+                return namedPlayer;
+            }
+
+            PlayerHealth playerHealth = FindFirstObjectByType<PlayerHealth>();
+            if (playerHealth != null)
+            {
+                return playerHealth.gameObject;
+            }
+
+            Camera mainCamera = Camera.main;
+            if (mainCamera != null)
+            {
+                Transform current = mainCamera.transform;
+                while (current != null)
+                {
+                    if (current.CompareTag("Player") || current.name.Contains("Player"))
+                    {
+                        return current.gameObject;
+                    }
+
+                    current = current.parent;
+                }
+            }
+
+            return null;
         }
 
         private void ResolveDoorWaypoints()
