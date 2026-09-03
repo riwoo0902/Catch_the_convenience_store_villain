@@ -16,7 +16,10 @@ namespace CWH.Player.UI
     public sealed class PlayerHUDController : MonoBehaviour
     {
         private const string SettingsResourceName = "PlayerHUDSettings";
-        private const string YoutubeUrl = "https://m.youtube.com/";
+        private const string YoutubeUrl = "https://m.youtube.com/?persist_app=1&app=m";
+        private const string MobileYoutubeUserAgent =
+            "Mozilla/5.0 (Linux; Android 14; Pixel 8) AppleWebKit/537.36 " +
+            "(KHTML, like Gecko) Chrome/126.0.0.0 Mobile Safari/537.36";
         private static TMP_FontAsset _runtimeUiFont;
 
         private PlayerHealth _health;
@@ -28,9 +31,11 @@ namespace CWH.Player.UI
         private GameObject _youtubeScreen;
         private GameObject _phoneDialerScreen;
         private GameObject _mailScreen;
+        private GameObject _stocksScreen;
         private RectTransform _phoneRect;
         private RectTransform _youtubeWebViewViewport;
         private RectTransform _mailContent;
+        private Image _healthFill;
         private WebViewObject _youtubeWebView;
         private TextMeshProUGUI _youtubeStatusText;
         private TextMeshProUGUI _dialedNumberText;
@@ -141,8 +146,8 @@ namespace CWH.Player.UI
             BuildHomeScreen(settings);
             BuildYoutubeScreen();
             BuildPhoneDialerScreen(settings);
+            BuildStocksScreen();
             BuildMailQuestScreen();
-            BuildHealthDisplay(canvasRect);
             BuildPoliceCountdownDisplay(canvasRect);
             RefreshPhoneSize();
         }
@@ -163,7 +168,7 @@ namespace CWH.Player.UI
 
             GameObject phoneButtonObject = CreateRectObject("PhoneButton", homeRect);
             RectTransform phoneButtonRect = (RectTransform)phoneButtonObject.transform;
-            SetCenteredRect(phoneButtonRect, new Vector2(-108f, 40f), new Vector2(92f, 84f));
+            SetCenteredRect(phoneButtonRect, new Vector2(-62f, 78f), new Vector2(88f, 80f));
             Image phoneButtonImage = phoneButtonObject.AddComponent<Image>();
             phoneButtonImage.sprite = settings != null ? settings.PhoneAppIcon : null;
             phoneButtonImage.preserveAspect = true;
@@ -179,12 +184,12 @@ namespace CWH.Player.UI
             }
 
             GameObject phoneLabel = CreateTextObject("PhoneLabel", homeRect, "Phone", 20f, FontStyles.Bold, TextAlignmentOptions.Center);
-            SetCenteredRect((RectTransform)phoneLabel.transform, new Vector2(-108f, -25f), new Vector2(100f, 34f));
+            SetCenteredRect((RectTransform)phoneLabel.transform, new Vector2(-62f, 17f), new Vector2(104f, 34f));
             phoneLabel.GetComponent<TextMeshProUGUI>().color = new Color(0.12f, 0.12f, 0.15f, 1f);
 
             GameObject youtubeButtonObject = CreateRectObject("YoutubeButton", homeRect);
             RectTransform buttonRect = (RectTransform)youtubeButtonObject.transform;
-            SetCenteredRect(buttonRect, new Vector2(0f, 40f), new Vector2(92f, 84f));
+            SetCenteredRect(buttonRect, new Vector2(62f, 78f), new Vector2(88f, 80f));
 
             Image youtubeImage = youtubeButtonObject.AddComponent<Image>();
             youtubeImage.sprite = settings != null ? settings.YoutubeLogo : null;
@@ -197,12 +202,33 @@ namespace CWH.Player.UI
 
             GameObject appLabel = CreateTextObject("YoutubeLabel", homeRect, "YouTube", 20f, FontStyles.Bold, TextAlignmentOptions.Center);
             RectTransform appLabelRect = (RectTransform)appLabel.transform;
-            SetCenteredRect(appLabelRect, new Vector2(0f, -25f), new Vector2(100f, 34f));
+            SetCenteredRect(appLabelRect, new Vector2(62f, 17f), new Vector2(104f, 34f));
             appLabel.GetComponent<TextMeshProUGUI>().color = new Color(0.12f, 0.12f, 0.15f, 1f);
+
+            GameObject stocksButtonObject = CreateRectObject("StocksButton", homeRect);
+            RectTransform stocksButtonRect = (RectTransform)stocksButtonObject.transform;
+            SetCenteredRect(stocksButtonRect, new Vector2(-62f, -82f), new Vector2(88f, 80f));
+            Image stocksButtonImage = stocksButtonObject.AddComponent<Image>();
+            stocksButtonImage.sprite = LoadStocksIcon();
+            stocksButtonImage.preserveAspect = true;
+            stocksButtonImage.color = stocksButtonImage.sprite != null
+                ? Color.white
+                : new Color(0.08f, 0.62f, 0.38f, 1f);
+            Button stocksButton = stocksButtonObject.AddComponent<Button>();
+            stocksButton.targetGraphic = stocksButtonImage;
+            stocksButton.onClick.AddListener(ShowStocksScreen);
+            if (stocksButtonImage.sprite == null)
+            {
+                CreateStocksChartIcon(stocksButtonRect);
+            }
+
+            GameObject stocksLabel = CreateTextObject("StocksLabel", homeRect, "Stocks", 20f, FontStyles.Bold, TextAlignmentOptions.Center);
+            SetCenteredRect((RectTransform)stocksLabel.transform, new Vector2(-62f, -143f), new Vector2(104f, 34f));
+            stocksLabel.GetComponent<TextMeshProUGUI>().color = new Color(0.12f, 0.12f, 0.15f, 1f);
 
             GameObject mailButtonObject = CreateRectObject("MailButton", homeRect);
             RectTransform mailButtonRect = (RectTransform)mailButtonObject.transform;
-            SetCenteredRect(mailButtonRect, new Vector2(108f, 40f), new Vector2(92f, 84f));
+            SetCenteredRect(mailButtonRect, new Vector2(62f, -82f), new Vector2(88f, 80f));
             Image mailButtonImage = mailButtonObject.AddComponent<Image>();
             mailButtonImage.sprite = settings != null ? settings.MailIcon : null;
             mailButtonImage.preserveAspect = true;
@@ -218,7 +244,7 @@ namespace CWH.Player.UI
             }
 
             GameObject mailLabel = CreateTextObject("MailLabel", homeRect, "메일", 20f, FontStyles.Bold, TextAlignmentOptions.Center);
-            SetCenteredRect((RectTransform)mailLabel.transform, new Vector2(108f, -25f), new Vector2(100f, 34f));
+            SetCenteredRect((RectTransform)mailLabel.transform, new Vector2(62f, -143f), new Vector2(104f, 34f));
             mailLabel.GetComponent<TextMeshProUGUI>().color = new Color(0.12f, 0.12f, 0.15f, 1f);
 
             GameObject hint = CreateTextObject("CloseHint", homeRect, "TAB  CLOSE", 18f, FontStyles.Normal, TextAlignmentOptions.Center);
@@ -241,19 +267,21 @@ namespace CWH.Player.UI
 
             GameObject header = CreateRectObject("Header", youtubeRect);
             RectTransform headerRect = (RectTransform)header.transform;
-            headerRect.anchorMin = new Vector2(0f, 0.82f);
+            headerRect.anchorMin = new Vector2(0f, 0.88f);
             headerRect.anchorMax = Vector2.one;
             headerRect.offsetMin = Vector2.zero;
             headerRect.offsetMax = Vector2.zero;
             header.AddComponent<Image>().color = new Color(0.92f, 0.05f, 0.05f, 1f);
 
             GameObject headerText = CreateTextObject("HeaderText", headerRect, "YouTube", 30f, FontStyles.Bold, TextAlignmentOptions.Center);
-            StretchToParent((RectTransform)headerText.transform);
+            RectTransform headerTextRect = (RectTransform)headerText.transform;
+            StretchToParent(headerTextRect);
+            headerTextRect.offsetMin = new Vector2(58f, 0f);
 
             GameObject webViewViewportObject = CreateRectObject("WebViewViewport", youtubeRect);
             _youtubeWebViewViewport = (RectTransform)webViewViewportObject.transform;
-            _youtubeWebViewViewport.anchorMin = new Vector2(0.025f, 0.24f);
-            _youtubeWebViewViewport.anchorMax = new Vector2(0.975f, 0.8f);
+            _youtubeWebViewViewport.anchorMin = new Vector2(0.01f, 0.01f);
+            _youtubeWebViewViewport.anchorMax = new Vector2(0.99f, 0.88f);
             _youtubeWebViewViewport.offsetMin = Vector2.zero;
             _youtubeWebViewViewport.offsetMax = Vector2.zero;
             Image webViewBackground = webViewViewportObject.AddComponent<Image>();
@@ -264,27 +292,19 @@ namespace CWH.Player.UI
             StretchToParent((RectTransform)loadingText.transform);
             _youtubeStatusText = loadingText.GetComponent<TextMeshProUGUI>();
 
-            GameObject recoveryText = CreateTextObject("RecoveryText", youtubeRect, "HP RECOVERING", 16f, FontStyles.Bold, TextAlignmentOptions.Center);
-            RectTransform recoveryRect = (RectTransform)recoveryText.transform;
-            recoveryRect.anchorMin = new Vector2(0.08f, 0.155f);
-            recoveryRect.anchorMax = new Vector2(0.92f, 0.225f);
-            recoveryRect.offsetMin = Vector2.zero;
-            recoveryRect.offsetMax = Vector2.zero;
-            recoveryText.GetComponent<TextMeshProUGUI>().color = new Color(0.25f, 0.65f, 0.3f, 1f);
-
-            GameObject backButtonObject = CreateRectObject("BackButton", youtubeRect);
+            GameObject backButtonObject = CreateRectObject("BackButton", headerRect);
             RectTransform backRect = (RectTransform)backButtonObject.transform;
-            backRect.anchorMin = new Vector2(0.5f, 0.09f);
-            backRect.anchorMax = new Vector2(0.5f, 0.09f);
+            backRect.anchorMin = new Vector2(0.1f, 0.5f);
+            backRect.anchorMax = new Vector2(0.1f, 0.5f);
             backRect.pivot = new Vector2(0.5f, 0.5f);
-            backRect.sizeDelta = new Vector2(180f, 48f);
+            backRect.sizeDelta = new Vector2(52f, 42f);
             Image backImage = backButtonObject.AddComponent<Image>();
-            backImage.color = new Color(0.15f, 0.15f, 0.18f, 1f);
+            backImage.color = new Color(0.68f, 0.02f, 0.02f, 1f);
             Button backButton = backButtonObject.AddComponent<Button>();
             backButton.targetGraphic = backImage;
             backButton.onClick.AddListener(ShowHomeScreen);
 
-            GameObject backText = CreateTextObject("BackText", backRect, "BACK", 22f, FontStyles.Bold, TextAlignmentOptions.Center);
+            GameObject backText = CreateTextObject("BackText", backRect, "<", 26f, FontStyles.Bold, TextAlignmentOptions.Center);
             StretchToParent((RectTransform)backText.transform);
 
             _youtubeScreen.SetActive(false);
@@ -501,6 +521,108 @@ namespace CWH.Player.UI
             RefreshEmergencyCallButton();
         }
 
+        private void BuildStocksScreen()
+        {
+            _stocksScreen = CreateRectObject("StocksScreen", _phoneRect);
+            RectTransform stocksRect = (RectTransform)_stocksScreen.transform;
+            SetPhoneContentAnchors(stocksRect);
+            _stocksScreen.AddComponent<Image>().color = new Color(0.035f, 0.055f, 0.075f, 1f);
+
+            GameObject header = CreateRectObject("StocksHeader", stocksRect);
+            RectTransform headerRect = (RectTransform)header.transform;
+            headerRect.anchorMin = new Vector2(0f, 0.84f);
+            headerRect.anchorMax = Vector2.one;
+            headerRect.offsetMin = Vector2.zero;
+            headerRect.offsetMax = Vector2.zero;
+            header.AddComponent<Image>().color = new Color(0.05f, 0.56f, 0.35f, 1f);
+
+            GameObject headerText = CreateTextObject(
+                "StocksHeaderText",
+                headerRect,
+                "STOCKS",
+                28f,
+                FontStyles.Bold,
+                TextAlignmentOptions.Center);
+            StretchToParent((RectTransform)headerText.transform);
+
+            GameObject healthCard = CreateRectObject("HealthCard", stocksRect);
+            RectTransform healthCardRect = (RectTransform)healthCard.transform;
+            healthCardRect.anchorMin = new Vector2(0.07f, 0.3f);
+            healthCardRect.anchorMax = new Vector2(0.93f, 0.76f);
+            healthCardRect.offsetMin = Vector2.zero;
+            healthCardRect.offsetMax = Vector2.zero;
+            healthCard.AddComponent<Image>().color = new Color(0.07f, 0.1f, 0.13f, 1f);
+
+            GameObject caption = CreateTextObject(
+                "HealthCaption",
+                healthCardRect,
+                "PLAYER HEALTH",
+                20f,
+                FontStyles.Bold,
+                TextAlignmentOptions.Center);
+            RectTransform captionRect = (RectTransform)caption.transform;
+            captionRect.anchorMin = new Vector2(0.08f, 0.7f);
+            captionRect.anchorMax = new Vector2(0.92f, 0.9f);
+            captionRect.offsetMin = Vector2.zero;
+            captionRect.offsetMax = Vector2.zero;
+            caption.GetComponent<TextMeshProUGUI>().color = new Color(0.55f, 0.68f, 0.74f, 1f);
+
+            GameObject healthTextObject = CreateTextObject(
+                "StocksHealthText",
+                healthCardRect,
+                "HP 100 / 100",
+                38f,
+                FontStyles.Bold,
+                TextAlignmentOptions.Center);
+            RectTransform healthTextRect = (RectTransform)healthTextObject.transform;
+            healthTextRect.anchorMin = new Vector2(0.04f, 0.36f);
+            healthTextRect.anchorMax = new Vector2(0.96f, 0.7f);
+            healthTextRect.offsetMin = Vector2.zero;
+            healthTextRect.offsetMax = Vector2.zero;
+            _healthText = healthTextObject.GetComponent<TextMeshProUGUI>();
+
+            GameObject healthBar = CreateRectObject("HealthBar", healthCardRect);
+            RectTransform healthBarRect = (RectTransform)healthBar.transform;
+            healthBarRect.anchorMin = new Vector2(0.1f, 0.18f);
+            healthBarRect.anchorMax = new Vector2(0.9f, 0.31f);
+            healthBarRect.offsetMin = Vector2.zero;
+            healthBarRect.offsetMax = Vector2.zero;
+            healthBar.AddComponent<Image>().color = new Color(0.025f, 0.035f, 0.045f, 1f);
+
+            GameObject healthFillObject = CreateRectObject("HealthFill", healthBarRect);
+            RectTransform healthFillRect = (RectTransform)healthFillObject.transform;
+            StretchToParent(healthFillRect);
+            _healthFill = healthFillObject.AddComponent<Image>();
+            _healthFill.type = Image.Type.Filled;
+            _healthFill.fillMethod = Image.FillMethod.Horizontal;
+            _healthFill.fillOrigin = (int)Image.OriginHorizontal.Left;
+            _healthFill.fillAmount = 1f;
+            _healthFill.raycastTarget = false;
+
+            GameObject backButtonObject = CreateRectObject("StocksBackButton", stocksRect);
+            RectTransform backRect = (RectTransform)backButtonObject.transform;
+            backRect.anchorMin = new Vector2(0.5f, 0.09f);
+            backRect.anchorMax = new Vector2(0.5f, 0.09f);
+            backRect.pivot = new Vector2(0.5f, 0.5f);
+            backRect.sizeDelta = new Vector2(180f, 48f);
+            Image backImage = backButtonObject.AddComponent<Image>();
+            backImage.color = new Color(0.04f, 0.34f, 0.23f, 1f);
+            Button backButton = backButtonObject.AddComponent<Button>();
+            backButton.targetGraphic = backImage;
+            backButton.onClick.AddListener(ShowHomeScreen);
+
+            GameObject backText = CreateTextObject(
+                "StocksBackText",
+                backRect,
+                "BACK",
+                21f,
+                FontStyles.Bold,
+                TextAlignmentOptions.Center);
+            StretchToParent((RectTransform)backText.transform);
+
+            _stocksScreen.SetActive(false);
+        }
+
         private void BuildMailQuestScreen()
         {
             _mailScreen = CreateRectObject("MailQuestScreen", _phoneRect);
@@ -676,28 +798,6 @@ namespace CWH.Player.UI
             objective.GetComponent<TextMeshProUGUI>().color = new Color(0.08f, 0.48f, 0.3f, 1f);
         }
 
-        private void BuildHealthDisplay(RectTransform canvasRect)
-        {
-            GameObject healthBackgroundObject = CreateRectObject("PlayerHealth", canvasRect);
-            RectTransform backgroundRect = (RectTransform)healthBackgroundObject.transform;
-            backgroundRect.anchorMin = new Vector2(0f, 1f);
-            backgroundRect.anchorMax = new Vector2(0f, 1f);
-            backgroundRect.pivot = new Vector2(0f, 1f);
-            backgroundRect.anchoredPosition = new Vector2(24f, -24f);
-            backgroundRect.sizeDelta = new Vector2(330f, 64f);
-
-            Image background = healthBackgroundObject.AddComponent<Image>();
-            background.color = new Color(0.02f, 0.02f, 0.025f, 0.78f);
-            background.raycastTarget = false;
-
-            GameObject textObject = CreateTextObject("HealthText", backgroundRect, "HP 100 / 100", 32f, FontStyles.Bold, TextAlignmentOptions.MidlineLeft);
-            RectTransform textRect = (RectTransform)textObject.transform;
-            StretchToParent(textRect);
-            textRect.offsetMin = new Vector2(18f, 4f);
-            textRect.offsetMax = new Vector2(-12f, -4f);
-            _healthText = textObject.GetComponent<TextMeshProUGUI>();
-        }
-
         private void BuildPoliceCountdownDisplay(RectTransform canvasRect)
         {
             _policeCountdownPanel = CreateRectObject("PoliceCountdown", canvasRect);
@@ -757,15 +857,26 @@ namespace CWH.Player.UI
 
         private void RefreshHealthText(float currentHealth, float maxHealth)
         {
+            if (_healthText == null)
+            {
+                return;
+            }
+
             int displayedCurrent = Mathf.CeilToInt(currentHealth);
             int displayedMax = Mathf.CeilToInt(maxHealth);
             _healthText.SetText("HP {0} / {1}", displayedCurrent, displayedMax);
 
             float healthRatio = maxHealth > 0f ? currentHealth / maxHealth : 0f;
-            _healthText.color = Color.Lerp(
+            Color healthColor = Color.Lerp(
                 new Color(1f, 0.2f, 0.2f, 1f),
                 new Color(0.35f, 1f, 0.5f, 1f),
                 healthRatio);
+            _healthText.color = healthColor;
+            if (_healthFill != null)
+            {
+                _healthFill.fillAmount = healthRatio;
+                _healthFill.color = healthColor;
+            }
         }
 
         private void SetPhoneOpen(bool isOpen)
@@ -818,6 +929,7 @@ namespace CWH.Player.UI
             _homeScreen.SetActive(false);
             _phoneDialerScreen.SetActive(false);
             _mailScreen.SetActive(false);
+            _stocksScreen.SetActive(false);
             _youtubeScreen.SetActive(true);
             EnsureYoutubeWebView();
             RefreshYoutubeWebViewBounds();
@@ -843,7 +955,24 @@ namespace CWH.Player.UI
             _homeScreen.SetActive(false);
             _youtubeScreen.SetActive(false);
             _mailScreen.SetActive(false);
+            _stocksScreen.SetActive(false);
             _phoneDialerScreen.SetActive(true);
+        }
+
+        private void ShowStocksScreen()
+        {
+            HideYoutubeWebView();
+            _health?.SetYoutubeHealing(false);
+            _homeScreen.SetActive(false);
+            _youtubeScreen.SetActive(false);
+            _phoneDialerScreen.SetActive(false);
+            _mailScreen.SetActive(false);
+            _stocksScreen.SetActive(true);
+
+            if (_health != null)
+            {
+                RefreshHealthText(_health.CurrentHealth, _health.MaxHealth);
+            }
         }
 
         private void ShowMailScreen()
@@ -853,6 +982,7 @@ namespace CWH.Player.UI
             _homeScreen.SetActive(false);
             _youtubeScreen.SetActive(false);
             _phoneDialerScreen.SetActive(false);
+            _stocksScreen.SetActive(false);
             _mailScreen.SetActive(true);
         }
 
@@ -862,6 +992,7 @@ namespace CWH.Player.UI
             _youtubeScreen.SetActive(false);
             _phoneDialerScreen.SetActive(false);
             _mailScreen.SetActive(false);
+            _stocksScreen.SetActive(false);
             _homeScreen.SetActive(true);
             _health?.SetYoutubeHealing(false);
         }
@@ -893,7 +1024,9 @@ namespace CWH.Player.UI
                         SetYoutubeStatus("NETWORK ERROR");
                     },
                     ld: _ => SetYoutubeStatus("HP RECOVERING"),
-                    zoom: true);
+                    zoom: true,
+                    ua: MobileYoutubeUserAgent,
+                    wkContentMode: 1);
                 _youtubeWebView.SetVisibility(false);
             }
             catch (System.Exception exception)
@@ -986,6 +1119,37 @@ namespace CWH.Player.UI
             rectTransform.anchorMax = new Vector2(0.855f, 0.9f);
             rectTransform.offsetMin = Vector2.zero;
             rectTransform.offsetMax = Vector2.zero;
+        }
+
+        private static Sprite LoadStocksIcon()
+        {
+            Sprite[] sprites = Resources.LoadAll<Sprite>("UI/stocks");
+            return sprites.Length > 0 ? sprites[0] : null;
+        }
+
+        private static void CreateStocksChartIcon(RectTransform parent)
+        {
+            Vector2[] points =
+            {
+                new(-27f, -18f),
+                new(-9f, -2f),
+                new(7f, -10f),
+                new(27f, 20f)
+            };
+
+            for (int i = 0; i < points.Length - 1; i++)
+            {
+                Vector2 start = points[i];
+                Vector2 end = points[i + 1];
+                Vector2 delta = end - start;
+                GameObject segment = CreateRectObject($"ChartSegment{i}", parent);
+                RectTransform segmentRect = (RectTransform)segment.transform;
+                SetCenteredRect(segmentRect, (start + end) * 0.5f, new Vector2(delta.magnitude, 7f));
+                segmentRect.localRotation = Quaternion.Euler(0f, 0f, Mathf.Atan2(delta.y, delta.x) * Mathf.Rad2Deg);
+                Image segmentImage = segment.AddComponent<Image>();
+                segmentImage.color = Color.white;
+                segmentImage.raycastTarget = false;
+            }
         }
 
         private static void CreatePhoneHandsetIcon(RectTransform parent)
