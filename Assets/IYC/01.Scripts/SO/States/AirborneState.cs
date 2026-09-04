@@ -32,13 +32,7 @@ namespace CWH.Player.States
             var targetSpeed = sprintAllowed ? ground.SprintSpeed : ground.WalkSpeed;
             var targetVelocity = wishDir * targetSpeed;
 
-            var horizontalVelocity = new Vector3(context.Velocity.x, 0f, context.Velocity.z);
-            var rate = targetVelocity.magnitude > horizontalVelocity.magnitude
-                ? ground.Acceleration * jump.AirControlMultiplier
-                : jump.AirDeceleration;
-            horizontalVelocity = Vector3.MoveTowards(horizontalVelocity, targetVelocity, rate * context.DeltaTime);
-
-            context.Velocity = new Vector3(horizontalVelocity.x, context.Velocity.y, horizontalVelocity.z);
+            context.Velocity = new Vector3(targetVelocity.x, context.Velocity.y, targetVelocity.z);
 
             context.Motor.Move(context.Velocity * context.DeltaTime);
         }

@@ -51,11 +51,7 @@ namespace CWH.Player.States
             wishDir = Vector3.ClampMagnitude(wishDir, 1f);
             var targetVelocity = wishDir * targetSpeed;
 
-            var horizontalVelocity = new Vector3(context.Velocity.x, 0f, context.Velocity.z);
-            var rate = targetVelocity.magnitude > horizontalVelocity.magnitude ? ground.Acceleration : ground.Deceleration;
-            horizontalVelocity = Vector3.MoveTowards(horizontalVelocity, targetVelocity, rate * context.DeltaTime);
-
-            context.Velocity = new Vector3(horizontalVelocity.x, -2f, horizontalVelocity.z);
+            context.Velocity = new Vector3(targetVelocity.x, -2f, targetVelocity.z);
 
             context.Motor.Move(context.Velocity * context.DeltaTime);
         }

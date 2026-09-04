@@ -12,10 +12,10 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: 88a11e4fdf6da0042913b45cbfbb7c45, type: 3}
   m_Name: GroundMovementConfig
   m_EditorClassIdentifier: Assembly-CSharp::CWH.Player.Config.GroundMovementConfig
-  WalkSpeed: 5
-  SprintSpeed: 15
+  WalkSpeed: 10
+  SprintSpeed: 20
   Acceleration: 40
-  Deceleration: 50
+  Deceleration: 988.1
   CrouchSpeedMultiplier: 0.5
   CrouchHeightMultiplier: 0.8
   MaxSpeed: 50
