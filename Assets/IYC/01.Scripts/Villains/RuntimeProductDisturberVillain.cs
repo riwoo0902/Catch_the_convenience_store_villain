@@ -122,8 +122,11 @@ namespace CWH.Villains
             }
 
             _navMeshAgent = GetComponent<NavMeshAgent>();
-            if (_navMeshAgent == null)
+            var navMeshFilter = new NavMeshQueryFilter { agentTypeID = 0, areaMask = NavMesh.AllAreas };
+            if (_navMeshAgent == null
+                && NavMesh.SamplePosition(transform.position, out NavMeshHit spawnHit, 2f, navMeshFilter))
             {
+                transform.position = spawnHit.position;
                 _navMeshAgent = gameObject.AddComponent<NavMeshAgent>();
             }
 

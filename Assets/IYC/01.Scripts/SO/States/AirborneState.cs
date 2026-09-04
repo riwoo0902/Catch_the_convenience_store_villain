@@ -53,17 +53,6 @@ namespace CWH.Player.States
                 return this;
             }
 
-            var wallRun = context.WallRun;
-            var horizontalSpeed = new Vector2(context.Velocity.x, context.Velocity.z).magnitude;
-            if (context.Velocity.y <= 0f
-                && horizontalSpeed >= wallRun.MinSpeedToStart
-                && context.WallRunCooldownTimer <= 0f
-                && context.Motor.HasClearanceAboveGround(wallRun.MinHeightAboveGround)
-                && context.WallDetector.TryDetectWall(context.Transform, out _))
-            {
-                return _library.WallRunning;
-            }
-
             return this;
         }
 

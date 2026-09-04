@@ -1,5 +1,4 @@
 using CWH.Player.Config;
-using CWH.Player.Core;
 using CWH.Player.Input;
 using UnityEngine;
 
@@ -11,14 +10,12 @@ namespace Branches.CWH.Scripts.Player
     {
         [SerializeField] private PlayerCameraConfig _config;
         [SerializeField] private Transform _cameraTransform;
-        [SerializeField] private float _wallRunTiltAngle = 10f;
 
         private IMovementInputReader _inputReader;
         private PlayerMovementController _movement;
         private Camera _camera;
         private float _yaw;
         private float _pitch;
-        private float _currentRoll;
         private float _baseCameraLocalY;
         private bool _hasSkippedFirstLookFrame;
 
@@ -53,16 +50,8 @@ namespace Branches.CWH.Scripts.Player
             _pitch = Mathf.Clamp(_pitch - look.y, _config.MinPitch, _config.MaxPitch);
 
             var snapshot = _movement.StateSource.GetSnapshot();
-            var targetRoll = snapshot.WallSide switch
-            {
-                WallSide.Left => -_wallRunTiltAngle,
-                WallSide.Right => _wallRunTiltAngle,
-                _ => 0f
-            };
-            _currentRoll = Mathf.MoveTowards(_currentRoll, targetRoll, _config.WallTiltTransitionSpeed * Time.deltaTime);
-
             transform.rotation = Quaternion.Euler(0f, _yaw, 0f);
-            _cameraTransform.localRotation = Quaternion.Euler(_pitch, 0f, _currentRoll);
+            _cameraTransform.localRotation = Quaternion.Euler(_pitch, 0f, 0f);
             
             var targetLocalY = _baseCameraLocalY - snapshot.HeightReduction;
             var localPosition = _cameraTransform.localPosition;

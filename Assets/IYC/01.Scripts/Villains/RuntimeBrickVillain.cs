@@ -1,5 +1,6 @@
 using UnityEngine;
 using UnityEngine.AI;
+using Villains.Animation;
 using Villains.Data;
 using Villains.Projectiles;
 using Villains.Visuals;
@@ -22,6 +23,7 @@ namespace CWH.Villains
         private NavMeshAgent _navMeshAgent;
         private GroundVisualAnchor _groundVisualAnchor;
         private Animator _animator;
+        private VillainAnimationEventRelay _animationEventRelay;
         private Vector3 _insideDoorPosition;
         private Vector3 _outsideDoorPosition;
         private Transform[] _roamPoints = new Transform[0];
@@ -73,8 +75,11 @@ namespace CWH.Villains
             }
 
             _navMeshAgent = GetComponent<NavMeshAgent>();
-            if (_navMeshAgent == null)
+            var navMeshFilter = new NavMeshQueryFilter { agentTypeID = 0, areaMask = NavMesh.AllAreas };
+            if (_navMeshAgent == null
+                && NavMesh.SamplePosition(transform.position, out NavMeshHit spawnHit, 2f, navMeshFilter))
             {
+                transform.position = spawnHit.position;
                 _navMeshAgent = gameObject.AddComponent<NavMeshAgent>();
             }
 
@@ -92,6 +97,22 @@ namespace CWH.Villains
             if (_animator != null && settings.AnimatorController != null)
             {
                 _animator.runtimeAnimatorController = settings.AnimatorController;
+            }
+
+            if (_animationEventRelay != null)
+            {
+                _animationEventRelay.OnThrowTrigger -= HandleThrowAnimationEvent;
+            }
+
+            if (_animator != null)
+            {
+                _animationEventRelay = _animator.GetComponent<VillainAnimationEventRelay>();
+                if (_animationEventRelay == null)
+                {
+                    _animationEventRelay = _animator.gameObject.AddComponent<VillainAnimationEventRelay>();
+                }
+
+                _animationEventRelay.OnThrowTrigger += HandleThrowAnimationEvent;
             }
 
             PlayAnimation("Run", 0f);
@@ -135,6 +156,7 @@ namespace CWH.Villains
             }
 
             _isFleeing = true;
+            _hasPendingThrow = false;
             _isEntering = false;
             _reachedInsideExitWaypoint = FlatSqrDistance(transform.position, _outsideDoorPosition)
                                          < FlatSqrDistance(transform.position, _insideDoorPosition);
@@ -285,8 +307,26 @@ namespace CWH.Villains
                 return;
             }
 
+            HandleThrowAnimationEvent();
+        }
+
+        private void HandleThrowAnimationEvent()
+        {
+            if (!_hasPendingThrow || _isFleeing || _isEntering || _isRoaming)
+            {
+                return;
+            }
+
             _hasPendingThrow = false;
             ReleaseProjectile();
+        }
+
+        private void OnDestroy()
+        {
+            if (_animationEventRelay != null)
+            {
+                _animationEventRelay.OnThrowTrigger -= HandleThrowAnimationEvent;
+            }
         }
 
         private void ReleaseProjectile()
@@ -368,13 +408,13 @@ namespace CWH.Villains
                 return Instantiate(_projectilePrefabOverride, spawnPosition, rotation);
             }
 
-            if (_requiresProjectileOverride)
+            if (_useRuntimeProjectileOverride)
             {
-                return null;
+                return CreateRuntimeProjectile(spawnPosition, velocity);
             }
 
-            return _useRuntimeProjectileOverride
-                ? CreateRuntimeProjectile(spawnPosition, velocity)
+            return _requiresProjectileOverride
+                ? null
                 : Instantiate(_settings.BrickPrefab, spawnPosition, rotation);
         }
 
@@ -500,12 +540,17 @@ namespace CWH.Villains
 
             if (!_navMeshAgent.isOnNavMesh)
             {
-                if (!NavMesh.SamplePosition(transform.position, out NavMeshHit hit, 2f, NavMesh.AllAreas))
+                var filter = new NavMeshQueryFilter
+                {
+                    agentTypeID = _navMeshAgent.agentTypeID,
+                    areaMask = _navMeshAgent.areaMask
+                };
+                if (!NavMesh.SamplePosition(transform.position, out NavMeshHit hit, 2f, filter)
+                    || !_navMeshAgent.Warp(hit.position)
+                    || !_navMeshAgent.isOnNavMesh)
                 {
                     return false;
                 }
-
-                _navMeshAgent.Warp(hit.position);
             }
 
             if (horizontalVelocity.sqrMagnitude <= 0.001f)

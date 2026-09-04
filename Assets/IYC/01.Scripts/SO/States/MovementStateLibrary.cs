@@ -7,7 +7,6 @@ namespace CWH.Player.States
     {
         public IMovementState Grounded;
         public IMovementState Airborne;
-        public IMovementState WallRunning;
         public IMovementState Sliding;
     }
 }

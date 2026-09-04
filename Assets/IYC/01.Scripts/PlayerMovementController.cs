@@ -14,9 +14,7 @@ namespace Branches.CWH.Scripts.Player
     {
         [SerializeField] private GroundMovementConfig _groundConfig;
         [SerializeField] private JumpConfig _jumpConfig;
-        [SerializeField] private WallRunConfig _wallRunConfig;
         [SerializeField] private SlideConfig _slideConfig;
-        [SerializeField] private LayerMask _wallMask = ~0;
 
         private CharacterControllerMotor _motor;
         private IMovementInputReader _inputReader;
@@ -32,17 +30,14 @@ namespace Branches.CWH.Scripts.Player
 
         private void Start()
         {
-            var wallDetector = new WallDetector(_wallMask, _wallRunConfig.DetectionDistance);
-            var context = new MovementContext(_groundConfig, _jumpConfig, _wallRunConfig, _slideConfig, _motor, wallDetector, transform);
+            var context = new MovementContext(_groundConfig, _jumpConfig, null, _slideConfig, _motor, null, transform);
 
             var library = new MovementStateLibrary();
             var grounded = new GroundedState(library);
             var airborne = new AirborneState(library);
-            var wallRunning = new WallRunState(library);
             var sliding = new SlideState(library);
             library.Grounded = grounded;
             library.Airborne = airborne;
-            library.WallRunning = wallRunning;
             library.Sliding = sliding;
 
             _stateMachine = new MovementStateMachine(context, grounded);

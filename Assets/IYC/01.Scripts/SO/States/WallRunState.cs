@@ -11,6 +11,7 @@ namespace CWH.Player.States
         private float _currentSpeed; // 벽런 이동 자체에 쓰는 속도 (RunSpeed 하한선 적용됨)
         private float _actualSpeed;  // 하한선 없이 실제로 감쇠하는 속도 (벽점프 가산 기준)
         private WallHit _wallHit;
+        private bool _hasWall;
 
         public WallRunState(MovementStateLibrary library)
         {
@@ -22,7 +23,7 @@ namespace CWH.Player.States
         public void Enter(MovementContext context)
         {
             _elapsed = 0f;
-            context.WallDetector.TryDetectWall(context.Transform, out _wallHit);
+            _hasWall = context.WallDetector.TryDetectWall(context.Transform, out _wallHit);
             context.CurrentWallSide = _wallHit.Side;
 
             var currentHorizontalSpeed = new Vector2(context.Velocity.x, context.Velocity.z).magnitude;
@@ -37,8 +38,13 @@ namespace CWH.Player.States
             var wallRun = context.WallRun;
             _elapsed += context.DeltaTime;
 
-            context.WallDetector.TryDetectWall(context.Transform, out _wallHit);
+            _hasWall = context.WallDetector.TryDetectWall(context.Transform, out _wallHit);
             context.CurrentWallSide = _wallHit.Side;
+
+            if (!_hasWall)
+            {
+                return;
+            }
 
             var wallForward = Vector3.Cross(_wallHit.Normal, Vector3.up);
             if (Vector3.Dot(wallForward, context.Transform.forward) < 0f)
@@ -63,6 +69,16 @@ namespace CWH.Player.States
         {
             var wallRun = context.WallRun;
 
+            if (context.Motor.IsGrounded)
+            {
+                return _library.Grounded;
+            }
+
+            if (!_hasWall)
+            {
+                return _library.Airborne;
+            }
+
             if (context.JumpBufferTimer > 0f)
             {
                 var boostedSpeed = _actualSpeed + wallRun.JumpSpeedBoost;
@@ -72,11 +88,6 @@ namespace CWH.Player.States
                 context.JumpBufferTimer = 0f;
                 context.RaiseEvent?.Invoke(MovementEventType.Jumped);
                 return _library.Airborne;
-            }
-
-            if (context.Motor.IsGrounded)
-            {
-                return _library.Grounded;
             }
 
             if (_currentSpeed < wallRun.MinSpeedToStart)
@@ -90,12 +101,6 @@ namespace CWH.Player.States
             {
                 // 시간 초과로 끝난 경우만 재부착 쿨다운을 건다 (그냥 벽이 끝나서 나가는 건 예외 - 다른 벽으로 체이닝 가능해야 함)
                 context.WallRunCooldownTimer = wallRun.ReattachCooldown;
-                return _library.Airborne;
-            }
-
-            var stillOnWall = context.WallDetector.TryDetectWall(context.Transform, out _);
-            if (!stillOnWall)
-            {
                 return _library.Airborne;
             }
 

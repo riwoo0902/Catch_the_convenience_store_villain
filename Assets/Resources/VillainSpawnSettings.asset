@@ -21,7 +21,7 @@ MonoBehaviour:
   _productDisturberVisualPrefab: {fileID: 1308782320497000878, guid: 5487cdc361212ea429afa9c9c1caddf9, type: 3}
   _chefVillainVisualPrefab: {fileID: 384146719174724604, guid: e4c22c8b095e68f41aac5b452edc942a, type: 3}
   _spatulaProjectilePrefab: {fileID: 731412900100000005, guid: 1d6b6ea2fb654a04cb7c9a72b59fef25, type: 3}
-  _spatulaProjectileVisualPrefab: {fileID: 100100000, guid: 97101f4da22085545a8275019260206a, type: 3}
+  _spatulaProjectileVisualPrefab: {fileID: 919132149155446097, guid: 97101f4da22085545a8275019260206a, type: 3}
   _spatulaThrowData: {fileID: 11400000, guid: 5f0e81b5d0b54f148af64e38f8f2d9a1, type: 2}
   _visualScale: 3
   _policeVisualScale: 2.2
@@ -42,12 +42,12 @@ MonoBehaviour:
   _minimumMischiefDelay: 4
   _maximumMischiefDelay: 10
   _fallbackRoamRadius: 6
-  _productDisturberSpawnChance: 0.4
+  _productDisturberSpawnChance: 0.5
   _productDisturbInterval: 2.5
   _productDisturbRadius: 1.6
   _productDisturbMaxPositionOffset: {x: 0.22, y: 0.08, z: 0.2}
   _productDisturbMaxRotationOffset: {x: 35, y: 55, z: 35}
-  _chefVillainSpawnChance: 1
+  _chefVillainSpawnChance: 0.33333334
   _spatulaProjectileVisualLocalScale: {x: 0.12, y: 0.12, z: 0.12}
   _spatulaProjectileVisualLocalRotation: {x: 0, y: 90, z: 0}
   _spatulaProjectileColliderSize: {x: 0.65, y: 0.12, z: 0.3}

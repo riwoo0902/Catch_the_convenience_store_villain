@@ -77,12 +77,6 @@ namespace CWH.Player.States
                 return _library.Airborne;
             }
 
-            if (context.Motor.HasClearanceAboveGround(context.WallRun.MinHeightAboveGround)
-                && context.WallDetector.TryDetectWall(context.Transform, out _))
-            {
-                return _library.WallRunning;
-            }
-
             var horizontalSpeed = new Vector2(context.Velocity.x, context.Velocity.z).magnitude;
             if (horizontalSpeed <= 0f)
             {

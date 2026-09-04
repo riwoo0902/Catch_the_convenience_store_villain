@@ -46,14 +46,15 @@ namespace CWH.Villains
         [SerializeField, Min(0.5f)] private float _fallbackRoamRadius = 6f;
 
         [Header("Product Disturber")]
-        [SerializeField, Range(0f, 1f)] private float _productDisturberSpawnChance = 0.4f;
+        [SerializeField, Range(0f, 1f), Tooltip("요리사가 선택되지 않았을 때 상품 정리 방해 빌런을 선택할 확률")]
+        private float _productDisturberSpawnChance = 0.5f;
         [SerializeField, Min(0.1f)] private float _productDisturbInterval = 2.5f;
         [SerializeField, Min(0.1f)] private float _productDisturbRadius = 1.6f;
         [SerializeField] private Vector3 _productDisturbMaxPositionOffset = new Vector3(0.22f, 0.08f, 0.2f);
         [SerializeField] private Vector3 _productDisturbMaxRotationOffset = new Vector3(35f, 55f, 35f);
 
         [Header("Chef Villain")]
-        [SerializeField, Range(0f, 1f)] private float _chefVillainSpawnChance = 0.25f;
+        [SerializeField, Range(0f, 1f)] private float _chefVillainSpawnChance = 1f / 3f;
         [SerializeField] private Vector3 _spatulaProjectileVisualLocalScale = Vector3.one * 0.12f;
         [SerializeField] private Vector3 _spatulaProjectileVisualLocalRotation = new Vector3(0f, 90f, 0f);
         [SerializeField] private Vector3 _spatulaProjectileColliderSize = new Vector3(0.65f, 0.12f, 0.3f);

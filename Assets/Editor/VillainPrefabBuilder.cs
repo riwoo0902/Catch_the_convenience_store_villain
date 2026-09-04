@@ -220,7 +220,6 @@ public static class VillainPrefabBuilder
         serializedObject.FindProperty("_spatulaProjectilePrefab").objectReferenceValue = spatulaProjectile;
         serializedObject.FindProperty("_spatulaProjectileVisualPrefab").objectReferenceValue = spatulaModel;
         serializedObject.FindProperty("_spatulaThrowData").objectReferenceValue = spatulaThrowData;
-        serializedObject.FindProperty("_chefVillainSpawnChance").floatValue = 1f;
         serializedObject.ApplyModifiedPropertiesWithoutUndo();
         EditorUtility.SetDirty(settings);
     }
