@@ -1,0 +1,19 @@
+%YAML 1.1
+%TAG !u! tag:unity3d.com,2011:
+--- !u!114 &11400000
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 0}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: 1a4a12f6054b440bb1021431a9b601dc, type: 3}
+  m_Name: GameFlowSettings
+  m_EditorClassIdentifier: Assembly-CSharp::CWH.GameFlow.GameFlowSettings
+  _shiftDurationSeconds: 600
+  _startHour: 20
+  _charactersPerSecond: 28
+  _checkoutDurationSeconds: 7
+  _clockTexture: {fileID: 2800000, guid: d6cf97dbcf0555a498b9100b7df340e0, type: 3}

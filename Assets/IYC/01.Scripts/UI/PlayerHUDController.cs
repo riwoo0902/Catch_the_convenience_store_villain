@@ -1,4 +1,5 @@
 using System.Collections;
+using CWH.GameFlow;
 using CWH.Player.Health;
 using CWH.Quests;
 using CWH.Villains;
@@ -8,6 +9,7 @@ using UnityEngine;
 using UnityEngine.EventSystems;
 using UnityEngine.InputSystem;
 using UnityEngine.InputSystem.UI;
+using UnityEngine.SceneManagement;
 using UnityEngine.UI;
 
 namespace CWH.Player.UI
@@ -32,6 +34,10 @@ namespace CWH.Player.UI
         private GameObject _phoneDialerScreen;
         private GameObject _mailScreen;
         private GameObject _stocksScreen;
+        private GameObject _clockScreen;
+        private TextMeshProUGUI _clockTimeText;
+        private TextMeshProUGUI _clockRemainingText;
+        private RectTransform _clockProgressFill;
         private RectTransform _phoneRect;
         private RectTransform _youtubeWebViewViewport;
         private RectTransform _mailContent;
@@ -49,24 +55,45 @@ namespace CWH.Player.UI
         private bool _previousCursorVisible;
         private bool _youtubePageRequested;
         private bool _policeCallPending;
+        private bool _gameplayEnabled = true;
+        private bool _responseWasActive;
+        private Coroutine _policeCallCoroutine;
         private string _dialedNumber = string.Empty;
+        private string _lastClockText;
+        private int _lastRemainingMinutes = -1;
         private int _lastScreenWidth;
         private int _lastScreenHeight;
 
-        [RuntimeInitializeOnLoadMethod(RuntimeInitializeLoadType.AfterSceneLoad)]
-        private static void InstallOnCanvas()
+        [RuntimeInitializeOnLoadMethod(RuntimeInitializeLoadType.BeforeSceneLoad)]
+        private static void RegisterSceneInstallation()
         {
-            if (FindFirstObjectByType<PlayerHUDController>() != null)
+            SceneManager.sceneLoaded -= InstallOnScene;
+            SceneManager.sceneLoaded += InstallOnScene;
+        }
+
+        [RuntimeInitializeOnLoadMethod(RuntimeInitializeLoadType.AfterSceneLoad)]
+        private static void InstallOnInitialScene()
+        {
+            InstallOnScene(SceneManager.GetActiveScene(), LoadSceneMode.Single);
+        }
+
+        private static void InstallOnScene(Scene scene, LoadSceneMode mode)
+        {
+            if (!GameLoopController.IsGameplayScene(scene))
             {
                 return;
             }
 
-            Canvas targetCanvas = FindFirstObjectByType<Canvas>();
-            if (targetCanvas == null)
+            foreach (PlayerHUDController existing in FindObjectsByType<PlayerHUDController>(FindObjectsInactive.Include, FindObjectsSortMode.None))
             {
-                targetCanvas = CreateFallbackCanvas();
+                if (existing.gameObject.scene == scene)
+                {
+                    return;
+                }
             }
 
+            Canvas targetCanvas = CreateFallbackCanvas();
+            SceneManager.MoveGameObjectToScene(targetCanvas.gameObject, scene);
             targetCanvas.gameObject.AddComponent<PlayerHUDController>();
         }
 
@@ -75,6 +102,11 @@ namespace CWH.Player.UI
             GameObject canvasObject = new("Player HUD Canvas", typeof(RectTransform), typeof(Canvas), typeof(CanvasScaler), typeof(GraphicRaycaster));
             Canvas canvas = canvasObject.GetComponent<Canvas>();
             canvas.renderMode = RenderMode.ScreenSpaceOverlay;
+            canvas.sortingOrder = 50;
+            CanvasScaler scaler = canvasObject.GetComponent<CanvasScaler>();
+            scaler.uiScaleMode = CanvasScaler.ScaleMode.ScaleWithScreenSize;
+            scaler.referenceResolution = new Vector2(1920f, 1080f);
+            scaler.matchWidthOrHeight = 1f;
 
             if (FindFirstObjectByType<EventSystem>() == null)
             {
@@ -101,10 +133,21 @@ namespace CWH.Player.UI
             }
 
             _phoneOverlay.SetActive(false);
+            SetGameplayEnabled(GameLoopController.AllowsGameplay);
         }
 
         private void Update()
         {
+            if (!_gameplayEnabled || !GameLoopController.AllowsGameplay)
+            {
+                if (_phoneOverlay.activeSelf || _policeCallPending)
+                {
+                    SetGameplayEnabled(false);
+                }
+
+                return;
+            }
+
             Keyboard keyboard = Keyboard.current;
             if (keyboard != null && keyboard.tabKey.wasPressedThisFrame)
             {
@@ -115,6 +158,33 @@ namespace CWH.Player.UI
             {
                 RefreshPhoneSize();
             }
+
+            RefreshClock();
+            bool responseActive = PoliceResponseController.IsResponseActive;
+            if (_responseWasActive != responseActive)
+            {
+                _responseWasActive = responseActive;
+                RefreshEmergencyCallButton();
+            }
+        }
+
+        public void SetGameplayEnabled(bool isEnabled)
+        {
+            _gameplayEnabled = isEnabled;
+            if (!isEnabled)
+            {
+                if (_phoneOverlay != null && _phoneOverlay.activeSelf)
+                {
+                    SetPhoneOpen(false);
+                }
+
+                _health?.SetYoutubeHealing(false);
+                HideYoutubeWebView();
+                CancelPendingEmergencyCall();
+            }
+
+            RefreshEmergencyCallButton();
+            RefreshClock();
         }
 
         private void BuildInterface(PlayerHUDSettings settings)
@@ -148,6 +218,7 @@ namespace CWH.Player.UI
             BuildPhoneDialerScreen(settings);
             BuildStocksScreen();
             BuildMailQuestScreen();
+            BuildClockScreen();
             BuildPoliceCountdownDisplay(canvasRect);
             RefreshPhoneSize();
         }
@@ -160,15 +231,15 @@ namespace CWH.Player.UI
 
             GameObject title = CreateTextObject("HomeTitle", homeRect, "APPS", 28f, FontStyles.Bold, TextAlignmentOptions.Center);
             RectTransform titleRect = (RectTransform)title.transform;
-            titleRect.anchorMin = new Vector2(0.1f, 0.78f);
-            titleRect.anchorMax = new Vector2(0.9f, 0.9f);
+            titleRect.anchorMin = new Vector2(0.1f, 0.85f);
+            titleRect.anchorMax = new Vector2(0.9f, 0.95f);
             titleRect.offsetMin = Vector2.zero;
             titleRect.offsetMax = Vector2.zero;
             title.GetComponent<TextMeshProUGUI>().color = new Color(0.12f, 0.12f, 0.15f, 1f);
 
             GameObject phoneButtonObject = CreateRectObject("PhoneButton", homeRect);
             RectTransform phoneButtonRect = (RectTransform)phoneButtonObject.transform;
-            SetCenteredRect(phoneButtonRect, new Vector2(-62f, 78f), new Vector2(88f, 80f));
+            SetHomeAppRect(phoneButtonRect, 0, 0, false);
             Image phoneButtonImage = phoneButtonObject.AddComponent<Image>();
             phoneButtonImage.sprite = settings != null ? settings.PhoneAppIcon : null;
             phoneButtonImage.preserveAspect = true;
@@ -184,12 +255,12 @@ namespace CWH.Player.UI
             }
 
             GameObject phoneLabel = CreateTextObject("PhoneLabel", homeRect, "Phone", 20f, FontStyles.Bold, TextAlignmentOptions.Center);
-            SetCenteredRect((RectTransform)phoneLabel.transform, new Vector2(-62f, 17f), new Vector2(104f, 34f));
+            SetHomeAppRect((RectTransform)phoneLabel.transform, 0, 0, true);
             phoneLabel.GetComponent<TextMeshProUGUI>().color = new Color(0.12f, 0.12f, 0.15f, 1f);
 
             GameObject youtubeButtonObject = CreateRectObject("YoutubeButton", homeRect);
             RectTransform buttonRect = (RectTransform)youtubeButtonObject.transform;
-            SetCenteredRect(buttonRect, new Vector2(62f, 78f), new Vector2(88f, 80f));
+            SetHomeAppRect(buttonRect, 1, 0, false);
 
             Image youtubeImage = youtubeButtonObject.AddComponent<Image>();
             youtubeImage.sprite = settings != null ? settings.YoutubeLogo : null;
@@ -202,12 +273,12 @@ namespace CWH.Player.UI
 
             GameObject appLabel = CreateTextObject("YoutubeLabel", homeRect, "YouTube", 20f, FontStyles.Bold, TextAlignmentOptions.Center);
             RectTransform appLabelRect = (RectTransform)appLabel.transform;
-            SetCenteredRect(appLabelRect, new Vector2(62f, 17f), new Vector2(104f, 34f));
+            SetHomeAppRect(appLabelRect, 1, 0, true);
             appLabel.GetComponent<TextMeshProUGUI>().color = new Color(0.12f, 0.12f, 0.15f, 1f);
 
             GameObject stocksButtonObject = CreateRectObject("StocksButton", homeRect);
             RectTransform stocksButtonRect = (RectTransform)stocksButtonObject.transform;
-            SetCenteredRect(stocksButtonRect, new Vector2(-62f, -82f), new Vector2(88f, 80f));
+            SetHomeAppRect(stocksButtonRect, 0, 1, false);
             Image stocksButtonImage = stocksButtonObject.AddComponent<Image>();
             stocksButtonImage.sprite = LoadStocksIcon();
             stocksButtonImage.preserveAspect = true;
@@ -223,12 +294,12 @@ namespace CWH.Player.UI
             }
 
             GameObject stocksLabel = CreateTextObject("StocksLabel", homeRect, "Stocks", 20f, FontStyles.Bold, TextAlignmentOptions.Center);
-            SetCenteredRect((RectTransform)stocksLabel.transform, new Vector2(-62f, -143f), new Vector2(104f, 34f));
+            SetHomeAppRect((RectTransform)stocksLabel.transform, 0, 1, true);
             stocksLabel.GetComponent<TextMeshProUGUI>().color = new Color(0.12f, 0.12f, 0.15f, 1f);
 
             GameObject mailButtonObject = CreateRectObject("MailButton", homeRect);
             RectTransform mailButtonRect = (RectTransform)mailButtonObject.transform;
-            SetCenteredRect(mailButtonRect, new Vector2(62f, -82f), new Vector2(88f, 80f));
+            SetHomeAppRect(mailButtonRect, 1, 1, false);
             Image mailButtonImage = mailButtonObject.AddComponent<Image>();
             mailButtonImage.sprite = settings != null ? settings.MailIcon : null;
             mailButtonImage.preserveAspect = true;
@@ -244,13 +315,39 @@ namespace CWH.Player.UI
             }
 
             GameObject mailLabel = CreateTextObject("MailLabel", homeRect, "메일", 20f, FontStyles.Bold, TextAlignmentOptions.Center);
-            SetCenteredRect((RectTransform)mailLabel.transform, new Vector2(62f, -143f), new Vector2(104f, 34f));
+            SetHomeAppRect((RectTransform)mailLabel.transform, 1, 1, true);
             mailLabel.GetComponent<TextMeshProUGUI>().color = new Color(0.12f, 0.12f, 0.15f, 1f);
+
+            GameFlowSettings gameFlowSettings = Resources.Load<GameFlowSettings>("GameFlowSettings");
+            GameObject clockButtonObject = CreateRectObject("ClockButton", homeRect);
+            RectTransform clockButtonRect = (RectTransform)clockButtonObject.transform;
+            SetHomeAppRect(clockButtonRect, 0, 2, false);
+            Image clockButtonImage = clockButtonObject.AddComponent<Image>();
+            clockButtonImage.sprite = gameFlowSettings != null ? gameFlowSettings.ClockIcon : null;
+            if (clockButtonImage.sprite == null && settings != null)
+            {
+                clockButtonImage.sprite = settings.ClockIcon;
+            }
+
+            clockButtonImage.preserveAspect = true;
+            clockButtonImage.color = clockButtonImage.sprite != null ? Color.white : new Color(0.1f, 0.18f, 0.27f, 1f);
+            Button clockButton = clockButtonObject.AddComponent<Button>();
+            clockButton.targetGraphic = clockButtonImage;
+            clockButton.onClick.AddListener(ShowClockScreen);
+            if (clockButtonImage.sprite == null)
+            {
+                GameObject clockFallback = CreateTextObject("ClockFallback", clockButtonRect, "24:00", 22f, FontStyles.Bold, TextAlignmentOptions.Center);
+                StretchToParent((RectTransform)clockFallback.transform);
+            }
+
+            GameObject clockLabel = CreateTextObject("ClockLabel", homeRect, "시계", 20f, FontStyles.Bold, TextAlignmentOptions.Center);
+            SetHomeAppRect((RectTransform)clockLabel.transform, 0, 2, true);
+            clockLabel.GetComponent<TextMeshProUGUI>().color = new Color(0.12f, 0.12f, 0.15f, 1f);
 
             GameObject hint = CreateTextObject("CloseHint", homeRect, "TAB  CLOSE", 18f, FontStyles.Normal, TextAlignmentOptions.Center);
             RectTransform hintRect = (RectTransform)hint.transform;
-            hintRect.anchorMin = new Vector2(0.15f, 0.06f);
-            hintRect.anchorMax = new Vector2(0.85f, 0.14f);
+            hintRect.anchorMin = new Vector2(0.15f, 0.025f);
+            hintRect.anchorMax = new Vector2(0.85f, 0.085f);
             hintRect.offsetMin = Vector2.zero;
             hintRect.offsetMax = Vector2.zero;
             hint.GetComponent<TextMeshProUGUI>().color = new Color(0.35f, 0.35f, 0.4f, 1f);
@@ -431,7 +528,7 @@ namespace CWH.Player.UI
 
         private void AppendDialedDigit(string digit)
         {
-            if (_policeCallPending || _dialedNumber.Length >= 3)
+            if (!_gameplayEnabled || !GameLoopController.AllowsGameplay || _policeCallPending || _dialedNumber.Length >= 3)
             {
                 return;
             }
@@ -443,7 +540,7 @@ namespace CWH.Player.UI
 
         private void ClearDialedNumber()
         {
-            if (_policeCallPending)
+            if (!_gameplayEnabled || !GameLoopController.AllowsGameplay || _policeCallPending)
             {
                 return;
             }
@@ -455,7 +552,7 @@ namespace CWH.Player.UI
 
         private void DeleteLastDialedDigit()
         {
-            if (_policeCallPending || _dialedNumber.Length == 0)
+            if (!_gameplayEnabled || !GameLoopController.AllowsGameplay || _policeCallPending || _dialedNumber.Length == 0)
             {
                 return;
             }
@@ -472,25 +569,36 @@ namespace CWH.Player.UI
 
         private void RefreshEmergencyCallButton()
         {
-            bool canCall = !_policeCallPending && _dialedNumber == "112";
+            bool responseActive = PoliceResponseController.IsResponseActive;
+            bool canCall = _gameplayEnabled && GameLoopController.AllowsGameplay && !_policeCallPending && !responseActive && _dialedNumber == "112";
             if (_emergencyCallButton != null)
             {
                 _emergencyCallButton.interactable = canCall;
             }
 
-            _dialerStatusText.SetText(canCall ? "PRESS CALL" : "ENTER 112");
-            _dialerStatusText.color = new Color(0.18f, 0.38f, 0.23f, 1f);
+            if (_dialerStatusText != null && !_policeCallPending)
+            {
+                _dialerStatusText.SetText(responseActive ? "POLICE RESPONDING" : canCall ? "PRESS CALL" : "ENTER 112");
+                _dialerStatusText.color = new Color(0.18f, 0.38f, 0.23f, 1f);
+            }
         }
 
         private void BeginEmergencyCall()
         {
-            if (_policeCallPending || _dialedNumber != "112")
+            if (!_gameplayEnabled || !GameLoopController.AllowsGameplay || _policeCallPending || _dialedNumber != "112")
             {
                 return;
             }
 
+            // Reserve the response at CALL press so later arrivals cannot turn a false report into a valid one.
+            if (!PoliceResponseController.TryBeginEmergencyCall())
+            {
+                RefreshEmergencyCallButton();
+                return;
+            }
+
             _policeCallPending = true;
-            StartCoroutine(CompleteEmergencyCall());
+            _policeCallCoroutine = StartCoroutine(CompleteEmergencyCall());
             SetPhoneOpen(false);
         }
 
@@ -502,23 +610,66 @@ namespace CWH.Player.UI
             }
 
             ShowPoliceCountdown(true);
-            for (int seconds = 5; seconds > 0; seconds--)
+            float arrivalTime = Time.time + 5f;
+            int previousSeconds = -1;
+            while (Time.time < arrivalTime)
             {
-                _dialerStatusText.SetText("POLICE ARRIVING IN {0}", seconds);
-                SetPoliceCountdown(seconds);
-                yield return new WaitForSeconds(1f);
+                if (!_gameplayEnabled || !GameLoopController.AllowsGameplay)
+                {
+                    CancelPendingEmergencyCall();
+                    yield break;
+                }
+
+                int seconds = Mathf.CeilToInt(arrivalTime - Time.time);
+                if (seconds != previousSeconds)
+                {
+                    previousSeconds = seconds;
+                    _dialerStatusText.SetText("POLICE ARRIVING IN {0}", seconds);
+                    SetPoliceCountdown(seconds);
+                }
+
+                yield return null;
             }
 
-            PoliceResponseController.RequestPoliceResponse();
+            PoliceResponseController.CompleteEmergencyCall();
+            if (!_gameplayEnabled || !GameLoopController.AllowsGameplay)
+            {
+                yield break;
+            }
+
             _dialerStatusText.SetText("POLICE ARRIVED");
             _dialerStatusText.color = new Color(0.05f, 0.55f, 0.2f, 1f);
             SetPoliceCountdown(0);
             yield return new WaitForSeconds(0.65f);
             ShowPoliceCountdown(false);
             _policeCallPending = false;
+            _policeCallCoroutine = null;
             _dialedNumber = string.Empty;
             RefreshDialedNumber();
             RefreshEmergencyCallButton();
+        }
+
+        private void CancelPendingEmergencyCall()
+        {
+            if (_policeCallCoroutine != null)
+            {
+                StopCoroutine(_policeCallCoroutine);
+                _policeCallCoroutine = null;
+            }
+
+            if (_policeCallPending)
+            {
+                PoliceResponseController.CancelEmergencyCall();
+            }
+
+            _policeCallPending = false;
+            _dialedNumber = string.Empty;
+            if (_dialedNumberText != null)
+            {
+                RefreshDialedNumber();
+            }
+
+            ShowPoliceCountdown(false);
         }
 
         private void BuildStocksScreen()
@@ -621,6 +772,99 @@ namespace CWH.Player.UI
             StretchToParent((RectTransform)backText.transform);
 
             _stocksScreen.SetActive(false);
+        }
+
+        private void BuildClockScreen()
+        {
+            _clockScreen = CreateRectObject("ClockScreen", _phoneRect);
+            RectTransform clockRect = (RectTransform)_clockScreen.transform;
+            SetPhoneContentAnchors(clockRect);
+            _clockScreen.AddComponent<Image>().color = new Color(0.035f, 0.055f, 0.085f, 1f);
+
+            Color muted = new(0.5f, 0.64f, 0.72f, 1f);
+            Color accent = new(0.48f, 0.92f, 0.82f, 1f);
+            CreateClockLabel("ClockHeader", clockRect, "시계", 28f, 0.82f, 0.97f, Color.white);
+            CreateClockLabel("ClockCaption", clockRect, "현재 시각", 19f, 0.69f, 0.79f, muted);
+            _clockTimeText = CreateClockLabel("CurrentTime", clockRect, "20:00", 68f, 0.52f, 0.72f, accent);
+            _clockTimeText.enableAutoSizing = true;
+            _clockTimeText.fontSizeMin = 35f;
+            _clockTimeText.fontSizeMax = 68f;
+
+            GameObject progressTrack = CreateRectObject("ShiftProgressTrack", clockRect);
+            RectTransform trackRect = (RectTransform)progressTrack.transform;
+            trackRect.anchorMin = new Vector2(0.1f, 0.46f);
+            trackRect.anchorMax = new Vector2(0.9f, 0.475f);
+            trackRect.offsetMin = Vector2.zero;
+            trackRect.offsetMax = Vector2.zero;
+            progressTrack.AddComponent<Image>().color = new Color(0.12f, 0.19f, 0.23f, 1f);
+            GameObject progress = CreateRectObject("ShiftProgress", trackRect);
+            _clockProgressFill = (RectTransform)progress.transform;
+            StretchToParent(_clockProgressFill);
+            Image fill = progress.AddComponent<Image>();
+            fill.color = accent;
+            fill.raycastTarget = false;
+
+            CreateClockLabel("ShiftHours", clockRect, "20:00  —  24:00", 16f, 0.39f, 0.45f, muted);
+            _clockRemainingText = CreateClockLabel("TimeUntilCheckout", clockRect, "퇴근까지 4시간 00분", 21f, 0.29f, 0.39f, Color.white);
+            _clockRemainingText.enableAutoSizing = true;
+            _clockRemainingText.fontSizeMin = 15f;
+            _clockRemainingText.fontSizeMax = 21f;
+            CreateClockLabel("ClockHint", clockRect, "24:00가 되면 퇴근합니다.\n그때까지 살아남으세요.", 17f, 0.16f, 0.29f, muted);
+
+            GameObject backButtonObject = CreateRectObject("ClockBackButton", clockRect);
+            RectTransform backRect = (RectTransform)backButtonObject.transform;
+            backRect.anchorMin = new Vector2(0.5f, 0.09f);
+            backRect.anchorMax = backRect.anchorMin;
+            backRect.pivot = new Vector2(0.5f, 0.5f);
+            backRect.sizeDelta = new Vector2(180f, 48f);
+            Image backImage = backButtonObject.AddComponent<Image>();
+            backImage.color = new Color(0.11f, 0.26f, 0.3f, 1f);
+            Button backButton = backButtonObject.AddComponent<Button>();
+            backButton.targetGraphic = backImage;
+            backButton.onClick.AddListener(ShowHomeScreen);
+            GameObject backText = CreateTextObject("ClockBackText", backRect, "뒤로", 21f, FontStyles.Bold, TextAlignmentOptions.Center);
+            StretchToParent((RectTransform)backText.transform);
+            _clockScreen.SetActive(false);
+            RefreshClock();
+        }
+
+        private static TextMeshProUGUI CreateClockLabel(string name, RectTransform parent, string text, float fontSize, float bottom, float top, Color color)
+        {
+            GameObject labelObject = CreateTextObject(name, parent, text, fontSize, FontStyles.Bold, TextAlignmentOptions.Center);
+            RectTransform rect = (RectTransform)labelObject.transform;
+            rect.anchorMin = new Vector2(0.07f, bottom);
+            rect.anchorMax = new Vector2(0.93f, top);
+            rect.offsetMin = Vector2.zero;
+            rect.offsetMax = Vector2.zero;
+            TextMeshProUGUI label = labelObject.GetComponent<TextMeshProUGUI>();
+            label.color = color;
+            return label;
+        }
+
+        private void RefreshClock()
+        {
+            if (_clockTimeText == null)
+            {
+                return;
+            }
+
+            GameLoopController loop = GameLoopController.Instance;
+            string clockText = loop != null ? loop.ClockText : "20:00";
+            float progress = loop != null ? Mathf.Clamp01(loop.Progress01) : 0f;
+            if (_lastClockText != clockText)
+            {
+                _lastClockText = clockText;
+                _clockTimeText.SetText(clockText);
+            }
+
+            int remainingMinutes = Mathf.CeilToInt((1f - progress) * 240f);
+            if (_lastRemainingMinutes != remainingMinutes)
+            {
+                _lastRemainingMinutes = remainingMinutes;
+                _clockRemainingText.SetText($"퇴근까지 {remainingMinutes / 60}시간 {remainingMinutes % 60:00}분");
+            }
+
+            _clockProgressFill.anchorMax = new Vector2(progress, 1f);
         }
 
         private void BuildMailQuestScreen()
@@ -881,6 +1125,11 @@ namespace CWH.Player.UI
 
         private void SetPhoneOpen(bool isOpen)
         {
+            if (_phoneOverlay == null || _phoneOverlay.activeSelf == isOpen || (isOpen && (!_gameplayEnabled || !GameLoopController.AllowsGameplay)))
+            {
+                return;
+            }
+
             if (isOpen)
             {
                 _previousCursorLockMode = Cursor.lockState;
@@ -926,6 +1175,12 @@ namespace CWH.Player.UI
 
         private void ShowYoutubeScreen()
         {
+            if (!_gameplayEnabled || !GameLoopController.AllowsGameplay)
+            {
+                return;
+            }
+
+            _clockScreen.SetActive(false);
             _homeScreen.SetActive(false);
             _phoneDialerScreen.SetActive(false);
             _mailScreen.SetActive(false);
@@ -950,6 +1205,7 @@ namespace CWH.Player.UI
 
         private void ShowPhoneDialerScreen()
         {
+            _clockScreen.SetActive(false);
             HideYoutubeWebView();
             _health?.SetYoutubeHealing(false);
             _homeScreen.SetActive(false);
@@ -957,10 +1213,12 @@ namespace CWH.Player.UI
             _mailScreen.SetActive(false);
             _stocksScreen.SetActive(false);
             _phoneDialerScreen.SetActive(true);
+            RefreshEmergencyCallButton();
         }
 
         private void ShowStocksScreen()
         {
+            _clockScreen.SetActive(false);
             HideYoutubeWebView();
             _health?.SetYoutubeHealing(false);
             _homeScreen.SetActive(false);
@@ -977,6 +1235,7 @@ namespace CWH.Player.UI
 
         private void ShowMailScreen()
         {
+            _clockScreen.SetActive(false);
             HideYoutubeWebView();
             _health?.SetYoutubeHealing(false);
             _homeScreen.SetActive(false);
@@ -986,8 +1245,27 @@ namespace CWH.Player.UI
             _mailScreen.SetActive(true);
         }
 
+        private void ShowClockScreen()
+        {
+            if (!_gameplayEnabled || !GameLoopController.AllowsGameplay)
+            {
+                return;
+            }
+
+            HideYoutubeWebView();
+            _health?.SetYoutubeHealing(false);
+            _homeScreen.SetActive(false);
+            _youtubeScreen.SetActive(false);
+            _phoneDialerScreen.SetActive(false);
+            _mailScreen.SetActive(false);
+            _stocksScreen.SetActive(false);
+            _clockScreen.SetActive(true);
+            RefreshClock();
+        }
+
         private void ShowHomeScreen()
         {
+            _clockScreen.SetActive(false);
             HideYoutubeWebView();
             _youtubeScreen.SetActive(false);
             _phoneDialerScreen.SetActive(false);
@@ -1214,6 +1492,16 @@ namespace CWH.Player.UI
             rectTransform.sizeDelta = size;
         }
 
+        private static void SetHomeAppRect(RectTransform rectTransform, int column, int row, bool isLabel)
+        {
+            Vector2 anchor = new(column == 0 ? 0.28f : 0.72f, 0.73f - row * 0.22f);
+            rectTransform.anchorMin = anchor;
+            rectTransform.anchorMax = anchor;
+            rectTransform.pivot = new Vector2(0.5f, 0.5f);
+            rectTransform.anchoredPosition = isLabel ? new Vector2(0f, -58f) : Vector2.zero;
+            rectTransform.sizeDelta = isLabel ? new Vector2(110f, 34f) : new Vector2(88f, 80f);
+        }
+
         private static GameObject CreateRectObject(string objectName, Transform parent)
         {
             GameObject gameObject = new(objectName, typeof(RectTransform));
@@ -1274,6 +1562,7 @@ namespace CWH.Player.UI
 
         private void OnDestroy()
         {
+            CancelPendingEmergencyCall();
             if (_health != null)
             {
                 _health.HealthChanged -= RefreshHealthText;

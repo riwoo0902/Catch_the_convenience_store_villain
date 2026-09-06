@@ -2,6 +2,7 @@ using System;
 using System.Collections.Generic;
 using UnityEngine;
 using UnityEngine.InputSystem;
+using UnityEngine.SceneManagement;
 using Villains.Projectiles;
 
 namespace CWH.Player.Interaction
@@ -48,6 +49,20 @@ namespace CWH.Player.Interaction
         [RuntimeInitializeOnLoadMethod(RuntimeInitializeLoadType.AfterSceneLoad)]
         private static void InstallOnPlayerCamera()
         {
+            SceneManager.sceneLoaded -= HandleSceneLoaded;
+            SceneManager.sceneLoaded += HandleSceneLoaded;
+            TryInstall();
+        }
+
+        private static void HandleSceneLoaded(Scene scene, LoadSceneMode mode)
+        {
+            TryInstall();
+        }
+
+        private static void TryInstall()
+        {
+            // Title and unrelated cameras must not own the store's product registry.
+            if (GameObject.Find("Player") == null) return;
             if (FindFirstObjectByType<ShelfProductInteraction>() != null)
             {
                 return;
@@ -104,6 +119,7 @@ namespace CWH.Player.Interaction
 
         private void Awake()
         {
+            UnorganizedProductCount = 0;
             _viewCamera = GetComponent<Camera>();
             CaptureInitialProductPoses();
             BrickProjectile.HitTarget += HandleBrickHit;

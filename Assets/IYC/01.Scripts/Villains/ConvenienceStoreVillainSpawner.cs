@@ -1,4 +1,5 @@
 using System.Collections;
+using CWH.GameFlow;
 using CWH.Player.Health;
 using UnityEngine;
 using UnityEngine.SceneManagement;
@@ -16,6 +17,10 @@ namespace CWH.Villains
             "automaticDoor_R_gp",
             "automaticDoorFrame"
         };
+
+        [Header("Shift Arrival Timing")]
+        [SerializeField, Min(0.1f)] private float _minimumArrivalDelay = 20f;
+        [SerializeField, Min(0.1f)] private float _maximumArrivalDelay = 40f;
 
         private VillainSpawnSettings _settings;
         private Transform _player;
@@ -129,28 +134,28 @@ namespace CWH.Villains
             ResolveDoorWaypoints();
             ResolveScenePoints();
             _playerHealth.Died += HandlePlayerDied;
-            StartCoroutine(SpawnFirstVillainAfterFrame());
             StartCoroutine(SpawnLoop());
-        }
-
-        private IEnumerator SpawnFirstVillainAfterFrame()
-        {
-            yield return null;
-
-            if (enabled && _player != null && _playerHealth != null && !_playerHealth.IsDead)
-            {
-                SpawnVillain();
-            }
         }
 
         private IEnumerator SpawnLoop()
         {
+            // The first arrival uses the same delay as later arrivals. Only working
+            // time advances this timer; the introductory story cannot consume it.
+            yield return null;
             while (enabled && _playerHealth != null && !_playerHealth.IsDead)
             {
-                float delay = Random.Range(_settings.MinimumSpawnDelay, _settings.MaximumSpawnDelay);
-                yield return new WaitForSeconds(delay);
+                float remaining = Random.Range(_minimumArrivalDelay, Mathf.Max(_minimumArrivalDelay, _maximumArrivalDelay));
+                while (remaining > 0f && enabled && _playerHealth != null && !_playerHealth.IsDead)
+                {
+                    if (GameLoopController.AllowsGameplay)
+                    {
+                        remaining -= Time.deltaTime;
+                    }
 
-                if (_player != null && _playerHealth != null && !_playerHealth.IsDead)
+                    yield return null;
+                }
+
+                if (enabled && GameLoopController.AllowsGameplay && _player != null && _playerHealth != null && !_playerHealth.IsDead)
                 {
                     SpawnVillain();
                 }
@@ -159,6 +164,11 @@ namespace CWH.Villains
 
         private void SpawnVillain()
         {
+            if (!GameLoopController.AllowsGameplay || _playerHealth == null || _playerHealth.IsDead)
+            {
+                return;
+            }
+
             bool useCustomSpawnPoint = TryGetRandomPoint(_spawnPoints, out Vector3 spawnPosition);
             if (useCustomSpawnPoint)
             {

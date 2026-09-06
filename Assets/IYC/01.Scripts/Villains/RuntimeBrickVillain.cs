@@ -439,6 +439,22 @@ namespace CWH.Villains
             if (_projectileVisualPrefabOverride != null)
             {
                 GameObject visual = Instantiate(_projectileVisualPrefabOverride, projectileObject.transform);
+                // Imported model cameras must never render from a spinning projectile.
+                foreach (Camera camera in visual.GetComponentsInChildren<Camera>(true))
+                {
+                    camera.enabled = false;
+                    Destroy(camera);
+                }
+                foreach (Light light in visual.GetComponentsInChildren<Light>(true))
+                {
+                    light.enabled = false;
+                    Destroy(light);
+                }
+                foreach (AudioListener listener in visual.GetComponentsInChildren<AudioListener>(true))
+                {
+                    listener.enabled = false;
+                    Destroy(listener);
+                }
                 visual.name = "Spatula Visual";
                 visual.transform.SetLocalPositionAndRotation(
                     Vector3.zero,

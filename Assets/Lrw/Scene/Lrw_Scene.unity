@@ -1399,7 +1399,7 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: f58682d4e02c4206ad9943d5bc573af8, type: 3}
   m_Name: 
   m_EditorClassIdentifier: Assembly-CSharp::Lrw.Script.UI.StartButton
-  nextSceneName: 
+  nextSceneName: Assets/IYC/00.Scene/ConvenienceStore.unity
 --- !u!1 &853545172
 GameObject:
   m_ObjectHideFlags: 0

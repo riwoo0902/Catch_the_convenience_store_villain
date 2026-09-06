@@ -9,11 +9,13 @@ namespace CWH.Player.UI
         [SerializeField] private Sprite _emergencyCallIcon;
         [SerializeField] private Sprite _youtubeLogo;
         [SerializeField] private Sprite _mailIcon;
+        [SerializeField] private Sprite _clockIcon;
 
         public Sprite PhoneSprite => _phoneSprite;
         public Sprite PhoneAppIcon => _phoneAppIcon;
         public Sprite EmergencyCallIcon => _emergencyCallIcon;
         public Sprite YoutubeLogo => _youtubeLogo;
         public Sprite MailIcon => _mailIcon;
+        public Sprite ClockIcon => _clockIcon;
     }
 }

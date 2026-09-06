@@ -1,4 +1,5 @@
 using System;
+using CWH.GameFlow;
 using CWH.Player.Interaction;
 using UnityEngine;
 
@@ -94,7 +95,7 @@ namespace CWH.Player.Health
         private void Update()
         {
             float deltaTime = Time.deltaTime;
-            if (deltaTime <= 0f)
+            if (deltaTime <= 0f || IsDead || !GameLoopController.AllowsGameplay)
             {
                 return;
             }
@@ -104,7 +105,7 @@ namespace CWH.Player.Health
                 ChangeHealth(-_unorganizedDamagePerSecond * deltaTime);
             }
 
-            if (_isWatchingYoutube)
+            if (_isWatchingYoutube && !IsDead)
             {
                 ChangeHealth(_youtubeHealingPerSecond * deltaTime);
             }
@@ -112,7 +113,7 @@ namespace CWH.Player.Health
 
         public void TakeDamage(int damage)
         {
-            if (damage <= 0 || IsDead || Time.time < _nextHitAllowedTime)
+            if (damage <= 0 || IsDead || !GameLoopController.AllowsGameplay || Time.time < _nextHitAllowedTime)
             {
                 return;
             }
@@ -123,9 +124,18 @@ namespace CWH.Player.Health
 
         public void Heal(float amount)
         {
-            if (amount > 0f && !IsDead)
+            if (amount > 0f && !IsDead && GameLoopController.AllowsGameplay)
             {
                 ChangeHealth(amount);
+            }
+        }
+
+        // A false emergency report costs exactly 20 HP, even during hit invulnerability.
+        public void ApplyFalseReportPenalty()
+        {
+            if (!IsDead && GameLoopController.AllowsGameplay)
+            {
+                ChangeHealth(-20f);
             }
         }
 
@@ -136,7 +146,7 @@ namespace CWH.Player.Health
 
         private void ChangeHealth(float delta)
         {
-            if (Mathf.Approximately(delta, 0f))
+            if (IsDead || Mathf.Approximately(delta, 0f))
             {
                 return;
             }

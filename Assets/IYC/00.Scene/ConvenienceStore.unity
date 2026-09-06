@@ -6509,6 +6509,32 @@ MonoBehaviour:
   m_ShadowLayerMask: 1
   m_RenderingLayers: 1
   m_ShadowRenderingLayers: 1
+--- !u!1 &1652259699 stripped
+GameObject:
+  m_CorrespondingSourceObject: {fileID: 3195029996011813082, guid: 910ab69de9843074f9bdf35e85cc5bb9, type: 3}
+  m_PrefabInstance: {fileID: 3195029996147843942}
+  m_PrefabAsset: {fileID: 0}
+--- !u!65 &1652259703
+BoxCollider:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 1652259699}
+  m_Material: {fileID: 0}
+  m_IncludeLayers:
+    serializedVersion: 2
+    m_Bits: 0
+  m_ExcludeLayers:
+    serializedVersion: 2
+    m_Bits: 0
+  m_LayerOverridePriority: 0
+  m_IsTrigger: 0
+  m_ProvidesContacts: 0
+  m_Enabled: 1
+  serializedVersion: 3
+  m_Size: {x: 0.2608373, y: 0.25090274, z: 0.04551637}
+  m_Center: {x: 0.000000014901161, y: 0.12461014, z: -0.6219989}
 --- !u!1 &1661273843
 GameObject:
   m_ObjectHideFlags: 0
@@ -6867,7 +6893,6 @@ MonoBehaviour:
   m_EditorClassIdentifier: Assembly-CSharp::Branches.CWH.Scripts.Player.PlayerCameraController
   _config: {fileID: 11400000, guid: dae56212af17fa9438a45418b030695f, type: 2}
   _cameraTransform: {fileID: 3309560969381660926}
-  _wallRunTiltAngle: 10
 --- !u!1 &578146780726884202
 GameObject:
   m_ObjectHideFlags: 0
@@ -7248,7 +7273,10 @@ PrefabInstance:
     m_RemovedComponents: []
     m_RemovedGameObjects: []
     m_AddedGameObjects: []
-    m_AddedComponents: []
+    m_AddedComponents:
+    - targetCorrespondingSourceObject: {fileID: 3195029996011813082, guid: 910ab69de9843074f9bdf35e85cc5bb9, type: 3}
+      insertIndex: -1
+      addedObject: {fileID: 1652259703}
   m_SourcePrefab: {fileID: 100100000, guid: 910ab69de9843074f9bdf35e85cc5bb9, type: 3}
 --- !u!33 &3244333138471356773
 MeshFilter:
@@ -7544,11 +7572,7 @@ MonoBehaviour:
   m_EditorClassIdentifier: Assembly-CSharp::CWH.Player.PlayerMovementController
   _groundConfig: {fileID: 11400000, guid: 3979510bbe13c57409414591b4bad4e6, type: 2}
   _jumpConfig: {fileID: 11400000, guid: 950139121be24424389b42e866086e58, type: 2}
-  _wallRunConfig: {fileID: 11400000, guid: a28fd9366a75c6d45b34de75723910c1, type: 2}
   _slideConfig: {fileID: 11400000, guid: 0da23fa44109b8647b419d830c04db9e, type: 2}
-  _wallMask:
-    serializedVersion: 2
-    m_Bits: 64
 --- !u!1 &4970999513603394779
 GameObject:
   m_ObjectHideFlags: 0

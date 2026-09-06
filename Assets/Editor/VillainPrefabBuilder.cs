@@ -165,10 +165,23 @@ public static class VillainPrefabBuilder
 
     private static void BuildSpatulaProjectile()
     {
+        var importer = AssetImporter.GetAtPath(SpatulaModelPath) as ModelImporter;
+        if (importer != null && (importer.importCameras || importer.importLights))
+        {
+            importer.importCameras = false;
+            importer.importLights = false;
+            importer.SaveAndReimport();
+        }
+
         GameObject spatulaModel = AssetDatabase.LoadAssetAtPath<GameObject>(SpatulaModelPath);
         if (spatulaModel == null)
         {
             throw new System.InvalidOperationException($"Spatula model was not found: {SpatulaModelPath}");
+        }
+
+        if (spatulaModel.GetComponentInChildren<Renderer>(true) == null)
+        {
+            throw new System.InvalidOperationException($"Spatula model has no renderer: {SpatulaModelPath}");
         }
 
         GameObject root = new GameObject("Spatula Projectile");

@@ -15,7 +15,7 @@ namespace Branches.CWH.Scripts.Player.Test
 
         private void Update()
         {
-            if (Keyboard.current.leftAltKey.wasPressedThisFrame)
+            if (Keyboard.current != null && Keyboard.current.leftAltKey.wasPressedThisFrame)
             {
                 if (_characterController != null)
                 {

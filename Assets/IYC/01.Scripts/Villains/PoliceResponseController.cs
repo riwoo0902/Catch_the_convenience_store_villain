@@ -1,3 +1,6 @@
+using System.Collections.Generic;
+using CWH.GameFlow;
+using CWH.Player.Health;
 using UnityEngine;
 using UnityEngine.AI;
 using UnityEngine.SceneManagement;
@@ -21,8 +24,22 @@ namespace CWH.Villains
         [SerializeField, Min(0f)] private float cooldown = 1f;
 
         private static PoliceResponseController s_instance;
+        private static readonly HashSet<Transform> NeutralizedVillains = new();
         private float _nextCallAllowedTime;
         private RuntimePoliceOfficer _activePolice;
+        private bool _emergencyCallPending;
+        private bool _reportWasFalse;
+
+        public static bool IsResponseActive => s_instance != null
+            && (s_instance._emergencyCallPending || s_instance._activePolice != null);
+        public static bool LastReportWasFalse => s_instance != null && s_instance._reportWasFalse;
+
+        [RuntimeInitializeOnLoadMethod(RuntimeInitializeLoadType.BeforeSceneLoad)]
+        private static void ResetSession()
+        {
+            s_instance = null;
+            NeutralizedVillains.Clear();
+        }
 
         [RuntimeInitializeOnLoadMethod(RuntimeInitializeLoadType.AfterSceneLoad)]
         private static void Install()
@@ -43,6 +60,15 @@ namespace CWH.Villains
 
         public static void RequestPoliceResponse()
         {
+            // Compatibility for callers that already completed their own countdown.
+            if (TryBeginEmergencyCall())
+            {
+                CompleteEmergencyCall();
+            }
+        }
+
+        private static PoliceResponseController GetOrCreate()
+        {
             PoliceResponseController controller = s_instance != null
                 ? s_instance
                 : FindFirstObjectByType<PoliceResponseController>();
@@ -53,19 +79,95 @@ namespace CWH.Villains
                 controller = controllerObject.AddComponent<PoliceResponseController>();
             }
 
-            controller.CallPolice();
+            return controller;
         }
 
-        public void CallPolice()
+        public static bool TryBeginEmergencyCall()
         {
-            if (Time.time < _nextCallAllowedTime)
+            if (!GameLoopController.AllowsGameplay || IsResponseActive)
+            {
+                return false;
+            }
+
+            PoliceResponseController controller = GetOrCreate();
+            if (controller == null || FindPlayer() == null || Time.time < controller._nextCallAllowedTime)
+            {
+                return false;
+            }
+
+            controller._reportWasFalse = !RuntimePoliceOfficer.HasActiveVillains();
+            controller._emergencyCallPending = true;
+            return true;
+        }
+
+        public static void CompleteEmergencyCall()
+        {
+            if (s_instance == null || !s_instance._emergencyCallPending)
             {
                 return;
             }
 
-            _nextCallAllowedTime = Time.time + cooldown;
-            ConvenienceStoreVillainSpawner.RequestAllVillainsFlee();
-            SpawnOrRetargetPolice();
+            if (!GameLoopController.AllowsGameplay)
+            {
+                CancelEmergencyCall();
+                return;
+            }
+
+            s_instance._emergencyCallPending = false;
+            s_instance._nextCallAllowedTime = Time.time + s_instance.cooldown;
+            if (!s_instance._reportWasFalse)
+            {
+                ConvenienceStoreVillainSpawner.RequestAllVillainsFlee();
+            }
+
+            s_instance.SpawnOrRetargetPolice();
+        }
+
+        public static void CancelEmergencyCall()
+        {
+            if (s_instance != null)
+            {
+                s_instance.ClearResponse();
+            }
+        }
+
+        public void CallPolice()
+        {
+            RequestPoliceResponse();
+        }
+
+        internal static bool IsNeutralized(Transform target)
+        {
+            return NeutralizedVillains.Contains(target);
+        }
+
+        internal static void RecordNeutralized(Transform target)
+        {
+            if (target != null && NeutralizedVillains.Add(target))
+            {
+                GameLoopController.Instance?.RecordArrest();
+            }
+        }
+
+        private void ClearResponse()
+        {
+            _emergencyCallPending = false;
+            _reportWasFalse = false;
+            _nextCallAllowedTime = 0f;
+            if (_activePolice != null)
+            {
+                _activePolice.gameObject.SetActive(false);
+                Destroy(_activePolice.gameObject);
+                _activePolice = null;
+            }
+        }
+
+        private void Update()
+        {
+            if (!GameLoopController.AllowsGameplay && (_emergencyCallPending || _activePolice != null))
+            {
+                ClearResponse();
+            }
         }
 
         private void Awake()
@@ -77,6 +179,7 @@ namespace CWH.Villains
             }
 
             s_instance = this;
+            NeutralizedVillains.Clear();
         }
 
         private void SpawnOrRetargetPolice()
@@ -115,6 +218,10 @@ namespace CWH.Villains
                 settings != null ? settings.PoliceAttackInterval : 1.15f,
                 settings != null ? settings.PoliceAttackHitDelay : 0.35f,
                 settings != null ? settings.PoliceAttackLockDuration : 0.9f);
+            if (_reportWasFalse)
+            {
+                _activePolice.ConfigureFalseReportVisit(player, spawnPosition);
+            }
         }
 
         private void ResolvePoliceRoute(Transform player, out Vector3 spawnPosition, out Vector3 destination)
@@ -209,6 +316,7 @@ namespace CWH.Villains
         private void OnDisable()
         {
             SceneManager.sceneLoaded -= HandleSceneLoaded;
+            ClearResponse();
         }
 
         private void OnDestroy()
@@ -221,7 +329,8 @@ namespace CWH.Villains
 
         private void HandleSceneLoaded(Scene scene, LoadSceneMode mode)
         {
-            _activePolice = null;
+            ClearResponse();
+            NeutralizedVillains.Clear();
         }
     }
 
@@ -258,6 +367,11 @@ namespace CWH.Villains
         private bool _arrived;
         private bool _isAttacking;
         private bool _hasPendingHit;
+        private bool _isFalseReportVisit;
+        private bool _falseReportPenaltyApplied;
+        private Transform _falseReportPlayer;
+        private Vector3 _falseReportExitPosition;
+        private float _falseReportPenaltyTime;
 
         public static GameObject Create(
             Vector3 position,
@@ -375,8 +489,21 @@ namespace CWH.Villains
             _arrived = false;
         }
 
+        public void ConfigureFalseReportVisit(Transform player, Vector3 exitPosition)
+        {
+            _isFalseReportVisit = true;
+            _falseReportPlayer = player;
+            _falseReportExitPosition = exitPosition;
+        }
+
         private void Update()
         {
+            if (!GameLoopController.AllowsGameplay)
+            {
+                StopNavigation();
+                return;
+            }
+
             if (_controller == null)
             {
                 _controller = GetComponent<CharacterController>();
@@ -384,6 +511,12 @@ namespace CWH.Villains
             if (_navMeshAgent == null)
             {
                 _navMeshAgent = GetComponent<NavMeshAgent>();
+            }
+
+            if (_isFalseReportVisit)
+            {
+                UpdateFalseReportVisit();
+                return;
             }
 
             if (_isAttacking)
@@ -404,6 +537,63 @@ namespace CWH.Villains
             }
 
             Destroy(gameObject);
+        }
+
+        private void UpdateFalseReportVisit()
+        {
+            if (!_falseReportPenaltyApplied)
+            {
+                if (_falseReportPlayer == null)
+                {
+                    Destroy(gameObject);
+                    return;
+                }
+
+                _target = _falseReportPlayer;
+                Vector3 toPlayer = Flatten(_falseReportPlayer.position - transform.position);
+                if (toPlayer.magnitude > Mathf.Max(_arriveDistance, _attackRange))
+                {
+                    MoveToward(toPlayer, _runSpeed);
+                    AnimateRun();
+                    return;
+                }
+
+                StopNavigation();
+                FaceDirection(toPlayer);
+                _target = null;
+                _falseReportPenaltyApplied = true;
+                _falseReportPenaltyTime = Time.time;
+                PlayerHealth.GetOrCreate()?.ApplyFalseReportPenalty();
+                AnimateIdle();
+                return;
+            }
+
+            if (Time.time < _falseReportPenaltyTime + 1.2f)
+            {
+                StopNavigation();
+                AnimateIdle();
+                return;
+            }
+
+            _destination = _falseReportExitPosition;
+            Vector3 toExit = Flatten(_destination - transform.position);
+            if (toExit.magnitude <= _arriveDistance || Time.time >= _falseReportPenaltyTime + 20f)
+            {
+                Destroy(gameObject);
+                return;
+            }
+
+            MoveToward(toExit, _runSpeed);
+            AnimateRun();
+        }
+
+        private void StopNavigation()
+        {
+            if (_navMeshAgent != null && _navMeshAgent.enabled && _navMeshAgent.isOnNavMesh)
+            {
+                _navMeshAgent.isStopped = true;
+                _navMeshAgent.ResetPath();
+            }
         }
 
         private void LateUpdate()
@@ -439,6 +629,7 @@ namespace CWH.Villains
 
         private void BeginAttack()
         {
+            StopNavigation();
             _isAttacking = true;
             _hasPendingHit = true;
             _attackStartedTime = Time.time;
@@ -555,6 +746,7 @@ namespace CWH.Villains
                 return false;
             }
 
+            _navMeshAgent.isStopped = false;
             _navMeshAgent.speed = speed;
             _navMeshAgent.angularSpeed = 720f;
             _navMeshAgent.acceleration = Mathf.Max(12f, speed * 4f);
@@ -817,6 +1009,11 @@ namespace CWH.Villains
             _animator.CrossFadeInFixedTime(stateHash, 0.08f);
         }
 
+        internal static bool HasActiveVillains()
+        {
+            return FindClosestVillain(Vector3.zero) != null;
+        }
+
         private static Transform FindClosestVillain(Vector3 origin)
         {
             Transform closest = null;
@@ -835,7 +1032,8 @@ namespace CWH.Villains
         {
             foreach (T target in targets)
             {
-                if (target == null || !target.gameObject.activeInHierarchy)
+                if (target == null || !IsValidTarget(target.transform)
+                    || target is Behaviour behaviour && !behaviour.enabled)
                 {
                     continue;
                 }
@@ -853,12 +1051,13 @@ namespace CWH.Villains
 
         private static bool IsValidTarget(Transform target)
         {
-            return target != null && target.gameObject.activeInHierarchy;
+            return target != null && target.gameObject.activeInHierarchy
+                && !PoliceResponseController.IsNeutralized(target);
         }
 
         private static void SuppressTarget(Transform target)
         {
-            if (target == null)
+            if (!GameLoopController.AllowsGameplay || !IsValidTarget(target))
             {
                 return;
             }
@@ -868,6 +1067,7 @@ namespace CWH.Villains
             RuntimeBrickVillain runtimeVillain = target.GetComponentInParent<RuntimeBrickVillain>();
             if (runtimeVillain != null)
             {
+                PoliceResponseController.RecordNeutralized(target);
                 Destroy(runtimeVillain.gameObject);
                 return;
             }
@@ -875,6 +1075,7 @@ namespace CWH.Villains
             RuntimeProductDisturberVillain productDisturber = target.GetComponentInParent<RuntimeProductDisturberVillain>();
             if (productDisturber != null)
             {
+                PoliceResponseController.RecordNeutralized(target);
                 Destroy(productDisturber.gameObject);
                 return;
             }
@@ -883,6 +1084,7 @@ namespace CWH.Villains
             if (brickVillain != null)
             {
                 brickVillain.CompleteFlee();
+                PoliceResponseController.RecordNeutralized(target);
                 return;
             }
 
@@ -890,6 +1092,7 @@ namespace CWH.Villains
             if (legacyVillain != null)
             {
                 legacyVillain.gameObject.SetActive(false);
+                PoliceResponseController.RecordNeutralized(target);
             }
         }
 
