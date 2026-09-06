@@ -13,6 +13,6 @@ MonoBehaviour:
   m_Name: Brick Villain Flee
   m_EditorClassIdentifier: Client::Agents.FSM.StateSO
   stateName: Flee
-  className: Villains.FSM.BrickVillainFleeState, Client
+  className: Villains.FSM.BrickVillainAimState
   assetIndex: 5
   stateParam: {fileID: 11400000, guid: b4d99fdb0abc46b0b96e92356e4a708e, type: 2}

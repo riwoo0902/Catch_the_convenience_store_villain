@@ -13,7 +13,7 @@ namespace Villains.FSM
         protected readonly BrickVillain _villain;
         protected readonly VillainTargetProvider _targetProvider;
         protected readonly VillainMovement _movement;
-        protected readonly BrickThrowAttack _throwAttack;
+        protected readonly ProjectileThrowAttack _throwAttack;
         protected readonly VillainAnimationEventRelay _animationEvents;
 
         protected Transform Target => _targetProvider != null ? _targetProvider.Target : null;

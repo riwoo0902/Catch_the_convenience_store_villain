@@ -5,14 +5,14 @@ using UnityEngine.InputSystem;
 namespace Player
 {
     [CreateAssetMenu(fileName = "Player Input", menuName = "SO/PlayerInput", order = 0)]
-    public class PlayerInputSO : ScriptableObject, Controls.Controls.IPlayerActions
+    public class PlayerInputSO : ScriptableObject, global::Controls.IPlayerActions
     {
         public event Action<Vector2> OnMovementChange;
         public event Action OnAttackKeyPressed;
         public event Action OnJumpKeyPressed;
         
         [SerializeField] private LayerMask whatIsGround;
-        private Controls.Controls _controls;
+        private global::Controls _controls;
 
 
         public Vector2 LookDir { get; private set; }
@@ -36,7 +36,7 @@ namespace Player
         {
             if (_controls == null)
             {
-                _controls = new Controls.Controls();
+                _controls = new global::Controls();
                 _controls.Player.SetCallbacks(this);
             }
             _controls.Player.Enable();
@@ -53,6 +53,10 @@ namespace Player
             OnMovementChange?.Invoke(movement);
         }
 
+        public void OnAiming(InputAction.CallbackContext context)
+        {
+        }
+
         public void OnAttack(InputAction.CallbackContext context)
         {
             if(context.performed)
@@ -63,6 +67,42 @@ namespace Player
         {
             if(context.performed)
                 OnJumpKeyPressed?.Invoke();
+        }
+
+        public void OnEquipPrimary(InputAction.CallbackContext context)
+        {
+        }
+
+        public void OnEquipSecondary(InputAction.CallbackContext context)
+        {
+        }
+
+        public void OnHolster(InputAction.CallbackContext context)
+        {
+        }
+
+        public void OnReload(InputAction.CallbackContext context)
+        {
+        }
+
+        public void OnSwitchFireMode(InputAction.CallbackContext context)
+        {
+        }
+
+        public void OnInteract(InputAction.CallbackContext context)
+        {
+        }
+
+        public void OnCrouch(InputAction.CallbackContext context)
+        {
+        }
+
+        public void OnSprint(InputAction.CallbackContext context)
+        {
+        }
+
+        public void OnSliding(InputAction.CallbackContext context)
+        {
         }
 
         public void OnPointer(InputAction.CallbackContext context)

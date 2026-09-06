@@ -9,7 +9,10 @@ namespace Lrw.Script.UI
         
         public void GoNextScene()
         {
-            SceneManager.LoadScene(nextSceneName);
+            if (string.IsNullOrEmpty(nextSceneName) || nextSceneName == CWH.GameFlow.GameLoopController.GameplayScenePath)
+                CWH.GameFlow.GameLoopController.StartNewGame();
+            else
+                SceneManager.LoadScene(nextSceneName);
         }
     }
 }

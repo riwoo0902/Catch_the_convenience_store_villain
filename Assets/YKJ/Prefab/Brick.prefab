@@ -108,7 +108,7 @@ BoxCollider:
     serializedVersion: 2
     m_Bits: 0
   m_LayerOverridePriority: 0
-  m_IsTrigger: 0
+  m_IsTrigger: 1
   m_ProvidesContacts: 0
   m_Enabled: 1
   serializedVersion: 3
@@ -140,7 +140,7 @@ Rigidbody:
   m_IsKinematic: 0
   m_Interpolate: 0
   m_Constraints: 0
-  m_CollisionDetection: 0
+  m_CollisionDetection: 2
 --- !u!114 &-2676254519284174068
 MonoBehaviour:
   m_ObjectHideFlags: 0
@@ -153,3 +153,8 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: 5fb291ef7717ae042bd10173ec2958fa, type: 3}
   m_Name: 
   m_EditorClassIdentifier: Client::Villains.Projectiles.BrickProjectile
+  spinAxis: {x: 0, y: 0, z: 1}
+  spinSpeed: 720
+  disturbShelfProductsOnHit: 1
+  shelfProductMaxPositionOffset: {x: 0.22, y: 0.08, z: 0.2}
+  shelfProductMaxRotationOffset: {x: 35, y: 55, z: 35}

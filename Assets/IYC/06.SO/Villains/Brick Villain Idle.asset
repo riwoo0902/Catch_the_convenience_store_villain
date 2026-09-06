@@ -13,6 +13,6 @@ MonoBehaviour:
   m_Name: Brick Villain Idle
   m_EditorClassIdentifier: Client::Agents.FSM.StateSO
   stateName: Idle
-  className: Villains.FSM.BrickVillainIdleState, Client
+  className: Villains.FSM.BrickVillainAimState
   assetIndex: 0
   stateParam: {fileID: 11400000, guid: 3484a3647242de844ae702b9e88b7285, type: 2}

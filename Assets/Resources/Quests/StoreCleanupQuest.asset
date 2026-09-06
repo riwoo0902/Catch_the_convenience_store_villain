@@ -1,0 +1,21 @@
+%YAML 1.1
+%TAG !u! tag:unity3d.com,2011:
+--- !u!114 &11400000
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 0}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: d7f1ce4a83b34d82929139802c08dc2a, type: 3}
+  m_Name: StoreCleanupQuest
+  m_EditorClassIdentifier: Assembly-CSharp::CWH.Quests.QuestDefinition
+  _questId: restore_store
+  _sortOrder: 0
+  _title: 매장 정리
+  _description: 체력이 0이 되기 전에 어질러진 상품을 원래 위치로 정리하세요.
+  _objective: 상품 정리
+  _targetAmount: 5
+  _reward: 매장 안전 회복
