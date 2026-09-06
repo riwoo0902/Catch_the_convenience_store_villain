@@ -27,6 +27,7 @@ namespace CWH.Villains
         private Vector3 _insideDoorPosition;
         private Vector3 _outsideDoorPosition;
         private Vector3 _currentDestination;
+        private float _mischiefDelay;
         private float _verticalVelocity;
         private float _mischiefStartTime;
         private float _nextRoamDecisionTime;
@@ -38,6 +39,7 @@ namespace CWH.Villains
         private bool _isMischiefActive;
         private bool _hasDestination;
         private bool _reachedInsideExitWaypoint;
+        private bool _entryAnnounced;
 
         public bool IsFleeing => _isFleeing;
 
@@ -53,7 +55,11 @@ namespace CWH.Villains
             _insideDoorPosition = insideDoorPosition;
             _outsideDoorPosition = outsideDoorPosition;
             _isEntering = enterFromOutside;
-            _mischiefStartTime = Time.time + Mathf.Max(0f, mischiefDelay);
+            _mischiefDelay = Mathf.Max(0f, mischiefDelay);
+            _entryAnnounced = false;
+            _mischiefStartTime = enterFromOutside
+                ? float.PositiveInfinity
+                : Time.time + _mischiefDelay;
             _nextDisturbTime = _mischiefStartTime;
             _roamPoints = roamPoints ?? new Transform[0];
 
@@ -144,12 +150,15 @@ namespace CWH.Villains
             if (toInsideDoor.sqrMagnitude < 0.5f)
             {
                 _isEntering = false;
+                _mischiefStartTime = Time.time + _mischiefDelay;
+                _nextDisturbTime = _mischiefStartTime;
+                AnnounceEntry();
                 return;
             }
 
             FaceDirection(toInsideDoor);
             _currentDestination = _insideDoorPosition;
-            Move(toInsideDoor.normalized * _settings.RoamSpeed);
+            Move(toInsideDoor.normalized * _settings.ChaseSpeed);
             PlayAnimation("Run", 0.1f);
         }
 
@@ -283,7 +292,9 @@ namespace CWH.Villains
 
         private void SetDestination(Vector3 destination)
         {
-            _currentDestination = destination;
+            _currentDestination = NavMesh.SamplePosition(destination, out NavMeshHit hit, 3f, NavMesh.AllAreas)
+                ? hit.position
+                : destination;
             _hasDestination = true;
             _nextRoamDecisionTime = Time.time + UnityEngine.Random.Range(_settings.MinimumRoamWait, _settings.MaximumRoamWait);
         }
@@ -334,14 +345,15 @@ namespace CWH.Villains
 
         private void Move(Vector3 horizontalVelocity)
         {
-            if (TryMoveWithNavMesh(horizontalVelocity))
+            Vector3 moveVelocity = horizontalVelocity;
+            if (TryMoveWithNavMesh(horizontalVelocity, out Vector3 navVelocity))
             {
-                return;
+                moveVelocity = navVelocity;
             }
 
             if (_controller == null || !_controller.enabled)
             {
-                transform.position += horizontalVelocity * Time.deltaTime;
+                transform.position += moveVelocity * Time.deltaTime;
                 return;
             }
 
@@ -354,12 +366,18 @@ namespace CWH.Villains
                 _verticalVelocity += Gravity * Time.deltaTime;
             }
 
-            Vector3 velocity = horizontalVelocity + Vector3.up * _verticalVelocity;
+            Vector3 velocity = moveVelocity + Vector3.up * _verticalVelocity;
             _controller.Move(velocity * Time.deltaTime);
+
+            if (_navMeshAgent != null && _navMeshAgent.enabled && _navMeshAgent.isOnNavMesh)
+            {
+                _navMeshAgent.nextPosition = transform.position;
+            }
         }
 
-        private bool TryMoveWithNavMesh(Vector3 horizontalVelocity)
+        private bool TryMoveWithNavMesh(Vector3 horizontalVelocity, out Vector3 navVelocity)
         {
+            navVelocity = Vector3.zero;
             if (_navMeshAgent == null || !_navMeshAgent.enabled)
             {
                 return false;
@@ -388,12 +406,17 @@ namespace CWH.Villains
             }
 
             ConfigureNavMeshAgent(horizontalVelocity.magnitude, _settings.RoamPointReachDistance);
+            _navMeshAgent.nextPosition = transform.position;
             _navMeshAgent.SetDestination(destinationHit.position);
 
             Vector3 desiredVelocity = _navMeshAgent.desiredVelocity;
-            if (desiredVelocity.sqrMagnitude > 0.001f)
+            navVelocity = desiredVelocity.sqrMagnitude > 0.001f
+                ? Vector3.ClampMagnitude(desiredVelocity, horizontalVelocity.magnitude)
+                : horizontalVelocity;
+
+            if (navVelocity.sqrMagnitude > 0.001f)
             {
-                FaceDirection(desiredVelocity);
+                FaceDirection(navVelocity);
             }
 
             return true;
@@ -413,6 +436,7 @@ namespace CWH.Villains
             _navMeshAgent.radius = _controller != null ? _controller.radius : 0.32f;
             _navMeshAgent.height = _controller != null ? _controller.height : 1.8f;
             _navMeshAgent.baseOffset = 0f;
+            _navMeshAgent.updatePosition = false;
             _navMeshAgent.updateRotation = false;
         }
 
@@ -454,6 +478,17 @@ namespace CWH.Villains
         private static float FlatSqrDistance(Vector3 first, Vector3 second)
         {
             return Flatten(first - second).sqrMagnitude;
+        }
+
+        private void AnnounceEntry()
+        {
+            if (_entryAnnounced)
+            {
+                return;
+            }
+
+            _entryAnnounced = true;
+            ConvenienceStoreVillainSpawner.NotifyVillainEnteredStore(name);
         }
     }
 }

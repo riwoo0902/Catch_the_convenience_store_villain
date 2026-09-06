@@ -1,4 +1,6 @@
+using System.Collections.Generic;
 using UnityEngine;
+using UnityEngine.AI;
 
 namespace Villains.Visuals
 {
@@ -15,6 +17,9 @@ namespace Villains.Visuals
 
         private Vector3 _baseLocalPosition;
         private bool _usesObjectRoot;
+        private Transform[] _rootVisualChildren = new Transform[0];
+        private Vector3[] _rootVisualBaseLocalPositions = new Vector3[0];
+        private Transform[] _groundReferencePoints = new Transform[0];
 
         public void Configure(Transform root, Transform ignored, float clearance)
         {
@@ -23,12 +28,15 @@ namespace Villains.Visuals
             groundClearance = Mathf.Max(0f, clearance);
             _usesObjectRoot = visualRoot == transform;
             _baseLocalPosition = visualRoot.localPosition;
+            RebuildRootVisualCache();
+            RebuildGroundReferences();
             AlignNow();
         }
 
         public void SetIgnoredRoot(Transform ignored)
         {
             ignoredRoot = ignored;
+            RebuildRootVisualCache();
         }
 
         private void Awake()
@@ -40,6 +48,8 @@ namespace Villains.Visuals
 
             _usesObjectRoot = visualRoot == transform;
             _baseLocalPosition = visualRoot.localPosition;
+            RebuildRootVisualCache();
+            RebuildGroundReferences();
         }
 
         private void LateUpdate()
@@ -49,7 +59,11 @@ namespace Villains.Visuals
                 return;
             }
 
-            if (!_usesObjectRoot)
+            if (_usesObjectRoot)
+            {
+                ResetRootVisualChildren();
+            }
+            else
             {
                 visualRoot.localPosition = _baseLocalPosition;
             }
@@ -59,23 +73,166 @@ namespace Villains.Visuals
 
         public void AlignNow()
         {
-            if (visualRoot == null || !TryGetVisualBounds(out Bounds bounds))
+            if (visualRoot == null || !TryGetVisualGroundY(out float visualGroundY))
             {
                 return;
             }
 
             float targetMinY = FindGroundY() + groundClearance;
-            float yOffset = targetMinY - bounds.min.y;
+            float yOffset = targetMinY - visualGroundY;
             if (Mathf.Abs(yOffset) <= 0.001f)
             {
                 return;
             }
 
-            visualRoot.position += Vector3.up * yOffset;
+            Vector3 offset = Vector3.up * yOffset;
+            if (_usesObjectRoot)
+            {
+                OffsetRootVisualChildren(offset);
+                return;
+            }
+
+            visualRoot.position += offset;
             if (!_usesObjectRoot)
             {
                 _baseLocalPosition = visualRoot.localPosition;
             }
+        }
+
+        private void RebuildRootVisualCache()
+        {
+            if (!_usesObjectRoot)
+            {
+                _rootVisualChildren = new Transform[0];
+                _rootVisualBaseLocalPositions = new Vector3[0];
+                return;
+            }
+
+            List<Transform> children = new List<Transform>(transform.childCount);
+            List<Vector3> localPositions = new List<Vector3>(transform.childCount);
+            for (int i = 0; i < transform.childCount; i++)
+            {
+                Transform child = transform.GetChild(i);
+                if (child == null)
+                {
+                    continue;
+                }
+
+                if (ignoredRoot != null && (child == ignoredRoot || child.IsChildOf(ignoredRoot)))
+                {
+                    continue;
+                }
+
+                children.Add(child);
+                localPositions.Add(child.localPosition);
+            }
+
+            _rootVisualChildren = children.ToArray();
+            _rootVisualBaseLocalPositions = localPositions.ToArray();
+        }
+
+        private void RebuildGroundReferences()
+        {
+            if (visualRoot == null)
+            {
+                _groundReferencePoints = new Transform[0];
+                return;
+            }
+
+            List<Transform> references = new List<Transform>();
+            Transform[] children = visualRoot.GetComponentsInChildren<Transform>(true);
+            foreach (Transform child in children)
+            {
+                if (child == null || (ignoredRoot != null && child.IsChildOf(ignoredRoot)))
+                {
+                    continue;
+                }
+
+                if (IsGroundReferenceName(child.name))
+                {
+                    references.Add(child);
+                }
+            }
+
+            _groundReferencePoints = references.ToArray();
+        }
+
+        private void ResetRootVisualChildren()
+        {
+            int count = Mathf.Min(_rootVisualChildren.Length, _rootVisualBaseLocalPositions.Length);
+            for (int i = 0; i < count; i++)
+            {
+                Transform child = _rootVisualChildren[i];
+                if (child == null)
+                {
+                    continue;
+                }
+
+                child.localPosition = _rootVisualBaseLocalPositions[i];
+            }
+        }
+
+        private void OffsetRootVisualChildren(Vector3 offset)
+        {
+            for (int i = 0; i < _rootVisualChildren.Length; i++)
+            {
+                Transform child = _rootVisualChildren[i];
+                if (child == null)
+                {
+                    continue;
+                }
+
+                child.position += offset;
+            }
+        }
+
+        private bool TryGetVisualGroundY(out float groundY)
+        {
+            if (TryGetLowestGroundReferenceY(out groundY))
+            {
+                return true;
+            }
+
+            if (TryGetVisualBounds(out Bounds bounds))
+            {
+                groundY = bounds.min.y;
+                return true;
+            }
+
+            groundY = 0f;
+            return false;
+        }
+
+        private bool TryGetLowestGroundReferenceY(out float groundY)
+        {
+            groundY = float.MaxValue;
+            bool found = false;
+            for (int i = 0; i < _groundReferencePoints.Length; i++)
+            {
+                Transform point = _groundReferencePoints[i];
+                if (point == null)
+                {
+                    continue;
+                }
+
+                groundY = Mathf.Min(groundY, point.position.y);
+                found = true;
+            }
+
+            if (!found)
+            {
+                groundY = 0f;
+            }
+
+            return found;
+        }
+
+        private static bool IsGroundReferenceName(string transformName)
+        {
+            return transformName == "LeftFoot"
+                   || transformName == "RightFoot"
+                   || transformName == "LeftToeBase"
+                   || transformName == "RightToeBase";
         }
 
         private bool TryGetVisualBounds(out Bounds bounds)
@@ -109,6 +266,19 @@ namespace Villains.Visuals
 
         private float FindGroundY()
         {
+            float groundY = transform.position.y;
+            bool foundGround = false;
+
+            if (NavMesh.SamplePosition(
+                    transform.position,
+                    out NavMeshHit navMeshHit,
+                    raycastHeight + raycastDistance,
+                    NavMesh.AllAreas))
+            {
+                groundY = navMeshHit.position.y;
+                foundGround = true;
+            }
+
             Vector3 origin = transform.position + Vector3.up * raycastHeight;
             int hitCount = Physics.RaycastNonAlloc(
                 origin,
@@ -119,12 +289,15 @@ namespace Villains.Visuals
                 QueryTriggerInteraction.Ignore);
 
             float closestDistance = float.MaxValue;
-            float groundY = transform.position.y;
-            bool foundGround = false;
             for (int i = 0; i < hitCount; i++)
             {
                 Transform hitTransform = GroundHits[i].transform;
                 if (hitTransform == null || hitTransform.IsChildOf(transform))
+                {
+                    continue;
+                }
+
+                if (GroundHits[i].normal.y < 0.45f)
                 {
                     continue;
                 }

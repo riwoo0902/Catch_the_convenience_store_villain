@@ -64,8 +64,11 @@ namespace CWH.Villains
             }
 
             _nextCallAllowedTime = Time.time + cooldown;
-            ConvenienceStoreVillainSpawner.RequestAllVillainsFlee();
+            ConvenienceStoreNavMeshBootstrapper.EnsureBuiltForActiveScene();
             SpawnOrRetargetPolice();
+            _activePolice?.RetargetClosestVillain();
+            ConvenienceStoreVillainSpawner.RequestAllVillainsFlee();
+            _activePolice?.RetargetClosestVillain();
         }
 
         private void Awake()
@@ -91,6 +94,7 @@ namespace CWH.Villains
             if (_activePolice != null)
             {
                 _activePolice.SetDestination(destination);
+                _activePolice.RetargetClosestVillain();
                 return;
             }
 
@@ -115,6 +119,7 @@ namespace CWH.Villains
                 settings != null ? settings.PoliceAttackInterval : 1.15f,
                 settings != null ? settings.PoliceAttackHitDelay : 0.35f,
                 settings != null ? settings.PoliceAttackLockDuration : 0.9f);
+            _activePolice.RetargetClosestVillain();
         }
 
         private void ResolvePoliceRoute(Transform player, out Vector3 spawnPosition, out Vector3 destination)
@@ -311,6 +316,7 @@ namespace CWH.Villains
             navMeshAgent.radius = controller.radius;
             navMeshAgent.height = controller.height;
             navMeshAgent.baseOffset = 0f;
+            navMeshAgent.updatePosition = false;
             navMeshAgent.updateRotation = false;
 
             Animator animator = visual != null ? visual.GetComponent<Animator>() : null;
@@ -367,12 +373,20 @@ namespace CWH.Villains
             _attackInterval = attackInterval;
             _attackHitDelay = attackHitDelay;
             _attackLockDuration = attackLockDuration;
+            WarpToNearestNavMesh();
         }
 
         public void SetDestination(Vector3 destination)
         {
-            _destination = destination;
+            _destination = SampleNavMeshPosition(destination, 4f, out Vector3 sampledDestination)
+                ? sampledDestination
+                : destination;
             _arrived = false;
+        }
+
+        public void RetargetClosestVillain()
+        {
+            _target = FindClosestVillain(transform.position);
         }
 
         private void Update()
@@ -403,7 +417,7 @@ namespace CWH.Villains
                 return;
             }
 
-            Destroy(gameObject);
+            UpdateArrival();
         }
 
         private void LateUpdate()
@@ -495,9 +509,9 @@ namespace CWH.Villains
         {
             FaceDirection(direction);
             Vector3 velocity = direction.sqrMagnitude > 0.001f ? direction.normalized * speed : Vector3.zero;
-            if (TryMoveWithNavMesh(direction, speed))
+            if (TryMoveWithNavMesh(speed, out Vector3 navVelocity))
             {
-                return;
+                velocity = navVelocity;
             }
 
             if (_controller != null)
@@ -507,6 +521,11 @@ namespace CWH.Villains
             else
             {
                 transform.position += velocity * Time.deltaTime;
+            }
+
+            if (_navMeshAgent != null && _navMeshAgent.enabled && _navMeshAgent.isOnNavMesh)
+            {
+                _navMeshAgent.nextPosition = transform.position;
             }
         }
 
@@ -523,34 +542,22 @@ namespace CWH.Villains
                 720f * Time.deltaTime);
         }
 
-        private bool TryMoveWithNavMesh(Vector3 direction, float speed)
+        private bool TryMoveWithNavMesh(float speed, out Vector3 navVelocity)
         {
+            navVelocity = Vector3.zero;
             if (_navMeshAgent == null || !_navMeshAgent.enabled)
             {
                 return false;
             }
 
-            if (!_navMeshAgent.isOnNavMesh)
+            if (!WarpToNearestNavMesh())
             {
-                if (!NavMesh.SamplePosition(transform.position, out NavMeshHit hit, 2f, NavMesh.AllAreas))
-                {
-                    return false;
-                }
-
-                _navMeshAgent.Warp(hit.position);
+                return false;
             }
 
-            Vector3 destination = transform.position;
-            if (_target != null)
-            {
-                destination = _target.position;
-            }
-            else if (direction.sqrMagnitude > 0.001f)
-            {
-                destination = _destination;
-            }
+            Vector3 destination = _target != null ? _target.position : _destination;
 
-            if (!NavMesh.SamplePosition(destination, out NavMeshHit destinationHit, 2.5f, NavMesh.AllAreas))
+            if (!SampleNavMeshPosition(destination, 4f, out Vector3 navDestination))
             {
                 return false;
             }
@@ -560,15 +567,56 @@ namespace CWH.Villains
             _navMeshAgent.acceleration = Mathf.Max(12f, speed * 4f);
             _navMeshAgent.stoppingDistance = _target != null ? _attackRange : _arriveDistance;
             _navMeshAgent.baseOffset = 0f;
-            _navMeshAgent.SetDestination(destinationHit.position);
+            _navMeshAgent.updatePosition = false;
+            _navMeshAgent.updateRotation = false;
+            _navMeshAgent.nextPosition = transform.position;
+            _navMeshAgent.SetDestination(navDestination);
 
             Vector3 desiredVelocity = _navMeshAgent.desiredVelocity;
-            if (desiredVelocity.sqrMagnitude > 0.001f)
+            navVelocity = desiredVelocity.sqrMagnitude > 0.001f
+                ? Vector3.ClampMagnitude(desiredVelocity, speed)
+                : Vector3.ClampMagnitude(Flatten(navDestination - transform.position), speed);
+
+            if (navVelocity.sqrMagnitude > 0.001f)
             {
-                FaceDirection(desiredVelocity);
+                FaceDirection(navVelocity);
             }
 
             return true;
+        }
+
+        private bool WarpToNearestNavMesh()
+        {
+            if (_navMeshAgent == null || !_navMeshAgent.enabled)
+            {
+                return false;
+            }
+
+            if (_navMeshAgent.isOnNavMesh)
+            {
+                return true;
+            }
+
+            if (!SampleNavMeshPosition(transform.position, 4f, out Vector3 navPosition))
+            {
+                return false;
+            }
+
+            _navMeshAgent.Warp(navPosition);
+            transform.position = navPosition;
+            return true;
+        }
+
+        private static bool SampleNavMeshPosition(Vector3 position, float maxDistance, out Vector3 navPosition)
+        {
+            if (NavMesh.SamplePosition(position, out NavMeshHit hit, maxDistance, NavMesh.AllAreas))
+            {
+                navPosition = hit.position;
+                return true;
+            }
+
+            navPosition = position;
+            return false;
         }
 
         private void AttachTemporaryWeapon(

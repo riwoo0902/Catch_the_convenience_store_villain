@@ -27,6 +27,7 @@ namespace CWH.Villains
         private Transform[] _roamPoints = new Transform[0];
         private Vector3 _currentRoamDestination;
         private float _verticalVelocity;
+        private float _mischiefDelay;
         private float _nextThrowTime;
         private float _fleeStartedTime;
         private float _animationLockedUntil;
@@ -40,6 +41,7 @@ namespace CWH.Villains
         private bool _hasRoamDestination;
         private bool _reachedInsideExitWaypoint;
         private bool _hasPendingThrow;
+        private bool _entryAnnounced;
 
         public bool IsFleeing => _isFleeing;
 
@@ -57,8 +59,12 @@ namespace CWH.Villains
             _insideDoorPosition = insideDoorPosition;
             _outsideDoorPosition = outsideDoorPosition;
             _isEntering = enterFromOutside;
-            _isRoaming = !enterFromOutside || mischiefDelay > 0f;
-            _mischiefStartTime = Time.time + Mathf.Max(0f, mischiefDelay);
+            _mischiefDelay = Mathf.Max(0f, mischiefDelay);
+            _entryAnnounced = false;
+            _isRoaming = !enterFromOutside || _mischiefDelay > 0f;
+            _mischiefStartTime = enterFromOutside
+                ? float.PositiveInfinity
+                : Time.time + _mischiefDelay;
             _roamPoints = roamPoints ?? new Transform[0];
             _nextThrowTime = Time.time + 0.8f;
 
@@ -202,7 +208,9 @@ namespace CWH.Villains
             if (toInsideDoor.sqrMagnitude < 0.5f)
             {
                 _isEntering = false;
-                _isRoaming = Time.time < _mischiefStartTime;
+                _mischiefStartTime = Time.time + _mischiefDelay;
+                _isRoaming = _mischiefDelay > 0f;
+                AnnounceEntry();
                 return;
             }
 
@@ -249,15 +257,20 @@ namespace CWH.Villains
                 Transform point = _roamPoints[Random.Range(0, _roamPoints.Length)];
                 if (point != null)
                 {
-                    _currentRoamDestination = point.position;
-                    _hasRoamDestination = true;
-                    _nextRoamDecisionTime = Time.time + Random.Range(_settings.MinimumRoamWait, _settings.MaximumRoamWait);
+                    SetRoamDestination(point.position);
                     return;
                 }
             }
 
             Vector2 randomCircle = Random.insideUnitCircle * _settings.FallbackRoamRadius;
-            _currentRoamDestination = transform.position + new Vector3(randomCircle.x, 0f, randomCircle.y);
+            SetRoamDestination(transform.position + new Vector3(randomCircle.x, 0f, randomCircle.y));
+        }
+
+        private void SetRoamDestination(Vector3 destination)
+        {
+            _currentRoamDestination = NavMesh.SamplePosition(destination, out NavMeshHit hit, 3f, NavMesh.AllAreas)
+                ? hit.position
+                : destination;
             _hasRoamDestination = true;
             _nextRoamDecisionTime = Time.time + Random.Range(_settings.MinimumRoamWait, _settings.MaximumRoamWait);
         }
@@ -368,14 +381,17 @@ namespace CWH.Villains
                 return Instantiate(_projectilePrefabOverride, spawnPosition, rotation);
             }
 
+            if (_useRuntimeProjectileOverride)
+            {
+                return CreateRuntimeProjectile(spawnPosition, velocity);
+            }
+
             if (_requiresProjectileOverride)
             {
                 return null;
             }
 
-            return _useRuntimeProjectileOverride
-                ? CreateRuntimeProjectile(spawnPosition, velocity)
-                : Instantiate(_settings.BrickPrefab, spawnPosition, rotation);
+            return Instantiate(_settings.BrickPrefab, spawnPosition, rotation);
         }
 
         private Projectile CreateRuntimeProjectile(Vector3 spawnPosition, Vector3 velocity)
@@ -396,10 +412,9 @@ namespace CWH.Villains
 
             Projectile projectile = projectileObject.AddComponent<Projectile>();
 
-            if (_projectileVisualPrefabOverride != null)
+            GameObject visual = CreateProjectileVisual(projectileObject.transform);
+            if (visual != null)
             {
-                GameObject visual = Instantiate(_projectileVisualPrefabOverride, projectileObject.transform);
-                visual.name = "Spatula Visual";
                 visual.transform.SetLocalPositionAndRotation(
                     Vector3.zero,
                     Quaternion.Euler(_settings.SpatulaProjectileVisualLocalRotation));
@@ -415,6 +430,77 @@ namespace CWH.Villains
             }
 
             return projectile;
+        }
+
+        private GameObject CreateProjectileVisual(Transform parent)
+        {
+            if (_projectileVisualPrefabOverride == null)
+            {
+                return null;
+            }
+
+            GameObject source = Instantiate(_projectileVisualPrefabOverride);
+            source.name = "Spatula Visual Source";
+            source.SetActive(false);
+            StripNonProjectileVisualComponents(source);
+
+            GameObject visualRoot = new("Spatula Visual");
+            visualRoot.transform.SetParent(parent, false);
+            CopyMeshRenderers(source.transform, visualRoot.transform);
+            Destroy(source);
+
+            if (visualRoot.GetComponentsInChildren<Renderer>(true).Length <= 0)
+            {
+                Destroy(visualRoot);
+                return null;
+            }
+
+            return visualRoot;
+        }
+
+        private static void CopyMeshRenderers(Transform sourceRoot, Transform targetRoot)
+        {
+            foreach (MeshFilter sourceFilter in sourceRoot.GetComponentsInChildren<MeshFilter>(true))
+            {
+                MeshRenderer sourceRenderer = sourceFilter.GetComponent<MeshRenderer>();
+                if (sourceRenderer == null || sourceFilter.sharedMesh == null)
+                {
+                    continue;
+                }
+
+                GameObject copy = new(sourceFilter.gameObject.name);
+                copy.transform.SetParent(targetRoot, false);
+                CopyRelativeTransform(sourceRoot, sourceFilter.transform, copy.transform);
+
+                MeshFilter targetFilter = copy.AddComponent<MeshFilter>();
+                targetFilter.sharedMesh = sourceFilter.sharedMesh;
+
+                MeshRenderer targetRenderer = copy.AddComponent<MeshRenderer>();
+                targetRenderer.sharedMaterials = sourceRenderer.sharedMaterials;
+                CopyRendererSettings(sourceRenderer, targetRenderer);
+            }
+        }
+
+        private static void CopyRelativeTransform(Transform sourceRoot, Transform source, Transform destination)
+        {
+            destination.localPosition = sourceRoot.InverseTransformPoint(source.position);
+            destination.localRotation = Quaternion.Inverse(sourceRoot.rotation) * source.rotation;
+
+            Vector3 rootScale = sourceRoot.lossyScale;
+            Vector3 sourceScale = source.lossyScale;
+            destination.localScale = new Vector3(
+                Mathf.Abs(rootScale.x) > 0.0001f ? sourceScale.x / rootScale.x : source.localScale.x,
+                Mathf.Abs(rootScale.y) > 0.0001f ? sourceScale.y / rootScale.y : source.localScale.y,
+                Mathf.Abs(rootScale.z) > 0.0001f ? sourceScale.z / rootScale.z : source.localScale.z);
+        }
+
+        private static void CopyRendererSettings(Renderer source, Renderer destination)
+        {
+            destination.shadowCastingMode = source.shadowCastingMode;
+            destination.receiveShadows = source.receiveShadows;
+            destination.lightProbeUsage = source.lightProbeUsage;
+            destination.reflectionProbeUsage = source.reflectionProbeUsage;
+            destination.probeAnchor = source.probeAnchor;
         }
 
         private static Vector3 BuildInitialVelocity(
@@ -467,14 +553,15 @@ namespace CWH.Villains
 
         private void Move(Vector3 horizontalVelocity)
         {
-            if (TryMoveWithNavMesh(horizontalVelocity))
+            Vector3 moveVelocity = horizontalVelocity;
+            if (TryMoveWithNavMesh(horizontalVelocity, out Vector3 navVelocity))
             {
-                return;
+                moveVelocity = navVelocity;
             }
 
             if (_controller == null || !_controller.enabled)
             {
-                transform.position += horizontalVelocity * Time.deltaTime;
+                transform.position += moveVelocity * Time.deltaTime;
                 return;
             }
 
@@ -487,12 +574,18 @@ namespace CWH.Villains
                 _verticalVelocity += Gravity * Time.deltaTime;
             }
 
-            Vector3 velocity = horizontalVelocity + Vector3.up * _verticalVelocity;
+            Vector3 velocity = moveVelocity + Vector3.up * _verticalVelocity;
             _controller.Move(velocity * Time.deltaTime);
+
+            if (_navMeshAgent != null && _navMeshAgent.enabled && _navMeshAgent.isOnNavMesh)
+            {
+                _navMeshAgent.nextPosition = transform.position;
+            }
         }
 
-        private bool TryMoveWithNavMesh(Vector3 horizontalVelocity)
+        private bool TryMoveWithNavMesh(Vector3 horizontalVelocity, out Vector3 navVelocity)
         {
+            navVelocity = Vector3.zero;
             if (_navMeshAgent == null || !_navMeshAgent.enabled || _settings == null)
             {
                 return false;
@@ -545,12 +638,17 @@ namespace CWH.Villains
                 : _isRoaming
                     ? _settings.RoamPointReachDistance
                 : Mathf.Max(0.4f, _settings.PreferredAttackDistance * 0.85f);
+            _navMeshAgent.nextPosition = transform.position;
             _navMeshAgent.SetDestination(destinationHit.position);
 
             Vector3 desiredVelocity = _navMeshAgent.desiredVelocity;
-            if (desiredVelocity.sqrMagnitude > 0.001f)
+            navVelocity = desiredVelocity.sqrMagnitude > 0.001f
+                ? Vector3.ClampMagnitude(desiredVelocity, speed)
+                : horizontalVelocity;
+
+            if (navVelocity.sqrMagnitude > 0.001f)
             {
-                FaceDirection(desiredVelocity);
+                FaceDirection(navVelocity);
             }
 
             return true;
@@ -570,6 +668,7 @@ namespace CWH.Villains
             _navMeshAgent.radius = _controller != null ? _controller.radius : 0.32f;
             _navMeshAgent.height = _controller != null ? _controller.height : 1.8f;
             _navMeshAgent.baseOffset = 0f;
+            _navMeshAgent.updatePosition = false;
             _navMeshAgent.updateRotation = false;
         }
 
@@ -613,6 +712,17 @@ namespace CWH.Villains
             return Flatten(first - second).sqrMagnitude;
         }
 
+        private void AnnounceEntry()
+        {
+            if (_entryAnnounced)
+            {
+                return;
+            }
+
+            _entryAnnounced = true;
+            ConvenienceStoreVillainSpawner.NotifyVillainEnteredStore(name);
+        }
+
         private bool IsProjectileTarget(Transform projectileTransform)
         {
             return projectileTransform != null
@@ -646,6 +756,32 @@ namespace CWH.Villains
 
             return projectileVisualPrefab.name.Contains("Player")
                    || projectileVisualPrefab.GetComponent<CharacterController>() != null;
+        }
+
+        private static void StripNonProjectileVisualComponents(GameObject visualRoot)
+        {
+            if (visualRoot == null)
+            {
+                return;
+            }
+
+            foreach (Camera camera in visualRoot.GetComponentsInChildren<Camera>(true))
+            {
+                camera.enabled = false;
+                Destroy(camera);
+            }
+
+            foreach (Light light in visualRoot.GetComponentsInChildren<Light>(true))
+            {
+                light.enabled = false;
+                Destroy(light);
+            }
+
+            foreach (AudioListener listener in visualRoot.GetComponentsInChildren<AudioListener>(true))
+            {
+                listener.enabled = false;
+                Destroy(listener);
+            }
         }
     }
 }

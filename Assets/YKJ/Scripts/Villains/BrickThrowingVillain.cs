@@ -9,6 +9,8 @@ namespace Villains
 {
     public class BrickThrowingVillain : Agent
     {
+        private const float Gravity = -20f;
+
         [Header("FSM")]
         [SerializeField] private StateListSO stateList;
 
@@ -38,6 +40,8 @@ namespace Villains
         private NavMeshAgent _navMeshAgent;
         private GroundVisualAnchor _groundVisualAnchor;
         private float _lastThrowTime = -999f;
+        private float _verticalVelocity;
+        private int _lastGroundMoveFrame = -1;
         private bool _isFleeing;
 
         public bool HasTarget => target != null;
@@ -83,10 +87,12 @@ namespace Villains
             if (_isFleeing)
             {
                 UpdateFlee();
+                GroundIfIdleThisFrame();
                 return;
             }
 
             _stateMachine?.UpdateMachine();
+            GroundIfIdleThisFrame();
         }
 
         public void ChangeState(VillainState newState, float transitionDuration)
@@ -111,13 +117,10 @@ namespace Villains
             RotateTo(direction);
 
             Vector3 velocity = direction.normalized * moveSpeed;
-            if (TryMoveWithNavMesh(target.position, moveSpeed, throwRange))
-                return;
+            if (TryMoveWithNavMesh(target.position, moveSpeed, throwRange, out Vector3 navVelocity))
+                velocity = navVelocity;
 
-            if (_characterController != null)
-                _characterController.SimpleMove(velocity);
-            else
-                transform.position += velocity * Time.deltaTime;
+            MoveWithGravity(velocity);
         }
 
         public void FaceTarget()
@@ -163,13 +166,10 @@ namespace Villains
 
             RotateTo(direction);
             Vector3 velocity = direction.normalized * fleeSpeed;
-            if (TryMoveWithNavMesh(fallbackFleeDestination, fleeSpeed, 0.5f))
-                return;
+            if (TryMoveWithNavMesh(fallbackFleeDestination, fleeSpeed, 0.5f, out Vector3 navVelocity))
+                velocity = navVelocity;
 
-            if (_characterController != null)
-                _characterController.SimpleMove(velocity);
-            else
-                transform.position += velocity * Time.deltaTime;
+            MoveWithGravity(velocity);
         }
 
         private void RotateTo(Vector3 direction)
@@ -185,8 +185,9 @@ namespace Villains
             );
         }
 
-        private bool TryMoveWithNavMesh(Vector3 destination, float speed, float stoppingDistance)
+        private bool TryMoveWithNavMesh(Vector3 destination, float speed, float stoppingDistance, out Vector3 navVelocity)
         {
+            navVelocity = Vector3.zero;
             if (_navMeshAgent == null || !_navMeshAgent.enabled)
                 return false;
 
@@ -202,13 +203,49 @@ namespace Villains
                 return false;
 
             ConfigureNavMeshAgent(speed, stoppingDistance);
+            _navMeshAgent.nextPosition = transform.position;
             _navMeshAgent.SetDestination(destinationHit.position);
 
             Vector3 desiredVelocity = _navMeshAgent.desiredVelocity;
-            if (desiredVelocity.sqrMagnitude > 0.001f)
-                RotateTo(desiredVelocity);
+            navVelocity = desiredVelocity.sqrMagnitude > 0.001f
+                ? Vector3.ClampMagnitude(desiredVelocity, speed)
+                : (destination - transform.position).normalized * speed;
+
+            if (navVelocity.sqrMagnitude > 0.001f)
+                RotateTo(navVelocity);
 
             return true;
+        }
+
+        private void MoveWithGravity(Vector3 horizontalVelocity)
+        {
+            if (_characterController == null || !_characterController.enabled)
+            {
+                transform.position += horizontalVelocity * Time.deltaTime;
+                _lastGroundMoveFrame = Time.frameCount;
+                return;
+            }
+
+            if (_characterController.isGrounded && _verticalVelocity < 0f)
+                _verticalVelocity = -2f;
+            else
+                _verticalVelocity += Gravity * Time.deltaTime;
+
+            Vector3 velocity = horizontalVelocity + Vector3.up * _verticalVelocity;
+            _characterController.Move(velocity * Time.deltaTime);
+
+            if (_navMeshAgent != null && _navMeshAgent.enabled && _navMeshAgent.isOnNavMesh)
+                _navMeshAgent.nextPosition = transform.position;
+
+            _lastGroundMoveFrame = Time.frameCount;
+        }
+
+        private void GroundIfIdleThisFrame()
+        {
+            if (_lastGroundMoveFrame == Time.frameCount)
+                return;
+
+            MoveWithGravity(Vector3.zero);
         }
 
         private void ConfigureNavMeshAgent(float speed, float stoppingDistance)
@@ -223,6 +260,7 @@ namespace Villains
             _navMeshAgent.radius = _characterController != null ? _characterController.radius : 0.35f;
             _navMeshAgent.height = _characterController != null ? _characterController.height : 2f;
             _navMeshAgent.baseOffset = 0f;
+            _navMeshAgent.updatePosition = false;
             _navMeshAgent.updateRotation = false;
         }
     }

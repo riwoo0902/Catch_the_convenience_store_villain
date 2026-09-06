@@ -21,6 +21,9 @@ namespace CWH.Player.UI
 
         private PlayerHealth _health;
         private TextMeshProUGUI _healthText;
+        private GameObject _villainAlertPanel;
+        private TextMeshProUGUI _villainAlertText;
+        private Coroutine _villainAlertRoutine;
         private GameObject _policeCountdownPanel;
         private TextMeshProUGUI _policeCountdownText;
         private GameObject _phoneOverlay;
@@ -95,6 +98,7 @@ namespace CWH.Player.UI
                 _healthText.SetText("HP -- / --");
             }
 
+            ConvenienceStoreVillainSpawner.VillainEnteredStore += ShowVillainEntryAlert;
             _phoneOverlay.SetActive(false);
         }
 
@@ -143,6 +147,7 @@ namespace CWH.Player.UI
             BuildPhoneDialerScreen(settings);
             BuildMailQuestScreen();
             BuildHealthDisplay(canvasRect);
+            BuildVillainAlertDisplay(canvasRect);
             BuildPoliceCountdownDisplay(canvasRect);
             RefreshPhoneSize();
         }
@@ -729,6 +734,65 @@ namespace CWH.Player.UI
             _policeCountdownPanel.SetActive(false);
         }
 
+        private void BuildVillainAlertDisplay(RectTransform canvasRect)
+        {
+            _villainAlertPanel = CreateRectObject("VillainEntryAlert", canvasRect);
+            RectTransform panelRect = (RectTransform)_villainAlertPanel.transform;
+            panelRect.anchorMin = new Vector2(0.5f, 1f);
+            panelRect.anchorMax = new Vector2(0.5f, 1f);
+            panelRect.pivot = new Vector2(0.5f, 1f);
+            panelRect.anchoredPosition = new Vector2(0f, -104f);
+            panelRect.sizeDelta = new Vector2(520f, 66f);
+
+            Image panelImage = _villainAlertPanel.AddComponent<Image>();
+            panelImage.color = new Color(0.18f, 0.025f, 0.025f, 0.88f);
+            panelImage.raycastTarget = false;
+
+            GameObject textObject = CreateTextObject(
+                "VillainEntryAlertText",
+                panelRect,
+                "진상 입장!",
+                30f,
+                FontStyles.Bold,
+                TextAlignmentOptions.Center);
+            RectTransform textRect = (RectTransform)textObject.transform;
+            StretchToParent(textRect);
+            textRect.offsetMin = new Vector2(18f, 6f);
+            textRect.offsetMax = new Vector2(-18f, -6f);
+            _villainAlertText = textObject.GetComponent<TextMeshProUGUI>();
+            _villainAlertText.color = new Color(1f, 0.82f, 0.32f, 1f);
+
+            _villainAlertPanel.SetActive(false);
+        }
+
+        private void ShowVillainEntryAlert(string villainName)
+        {
+            if (_villainAlertPanel == null || _villainAlertText == null)
+            {
+                return;
+            }
+
+            string cleanedName = string.IsNullOrWhiteSpace(villainName)
+                ? "진상"
+                : villainName.Replace("(Clone)", string.Empty).Trim();
+            _villainAlertText.text = $"{cleanedName} 입장!";
+
+            if (_villainAlertRoutine != null)
+            {
+                StopCoroutine(_villainAlertRoutine);
+            }
+
+            _villainAlertRoutine = StartCoroutine(ShowVillainAlertRoutine());
+        }
+
+        private IEnumerator ShowVillainAlertRoutine()
+        {
+            _villainAlertPanel.SetActive(true);
+            yield return new WaitForSeconds(3f);
+            _villainAlertPanel.SetActive(false);
+            _villainAlertRoutine = null;
+        }
+
         private void ShowPoliceCountdown(bool isVisible)
         {
             if (_policeCountdownPanel != null)
@@ -1115,6 +1179,8 @@ namespace CWH.Player.UI
                 _health.HealthChanged -= RefreshHealthText;
                 _health.SetYoutubeHealing(false);
             }
+
+            ConvenienceStoreVillainSpawner.VillainEnteredStore -= ShowVillainEntryAlert;
 
             HideYoutubeWebView();
             if (_youtubeWebView != null)
