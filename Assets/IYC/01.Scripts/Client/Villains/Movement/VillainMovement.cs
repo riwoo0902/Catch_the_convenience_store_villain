@@ -7,15 +7,18 @@ namespace Villains.Movement
 {
     public class VillainMovement : MonoBehaviour, IModule
     {
-        [SerializeField] private float moveSpeed = 4f;
-        [SerializeField] private float fleeSpeed = 6.5f;
-        [SerializeField] private float rotationSpeed = 540f;
+        private const float Gravity = -20f;
+
+        [SerializeField] private float moveSpeed = 7.5f;
+        [SerializeField] private float fleeSpeed = 10.5f;
+        [SerializeField] private float rotationSpeed = 720f;
         [SerializeField] private float arriveDistance = 0.4f;
 
         private CharacterController _characterController;
         private NavMeshAgent _navMeshAgent;
         private GroundVisualAnchor _groundVisualAnchor;
         private Transform _ownerTransform;
+        private float _verticalVelocity;
 
         public Vector3 Velocity { get; private set; }
         public bool IsArrived { get; private set; }
@@ -62,19 +65,18 @@ namespace Villains.Movement
             if (IsArrived)
             {
                 Stop();
+                MoveWithGravity(Vector3.zero);
                 return;
             }
 
             FaceDirection(direction);
             Velocity = direction.normalized * speed;
 
-            if (TryMoveWithNavMesh(destination, speed))
-                return;
+            Vector3 moveVelocity = Velocity;
+            if (TryMoveWithNavMesh(destination, speed, out Vector3 navVelocity))
+                moveVelocity = navVelocity;
 
-            if (_characterController != null)
-                _characterController.SimpleMove(Velocity);
-            else
-                _ownerTransform.position += Velocity * Time.deltaTime;
+            MoveWithGravity(moveVelocity);
         }
 
         public void LookAt(Vector3 targetPosition)
@@ -109,11 +111,13 @@ namespace Villains.Movement
             _navMeshAgent.radius = _characterController != null ? _characterController.radius : 0.35f;
             _navMeshAgent.height = _characterController != null ? _characterController.height : 2f;
             _navMeshAgent.baseOffset = 0f;
+            _navMeshAgent.updatePosition = false;
             _navMeshAgent.updateRotation = false;
         }
 
-        private bool TryMoveWithNavMesh(Vector3 destination, float speed)
+        private bool TryMoveWithNavMesh(Vector3 destination, float speed, out Vector3 navVelocity)
         {
+            navVelocity = Vector3.zero;
             if (_navMeshAgent == null || !_navMeshAgent.enabled)
                 return false;
 
@@ -129,17 +133,52 @@ namespace Villains.Movement
                 return false;
 
             ConfigureNavMeshAgent(speed);
+            _navMeshAgent.nextPosition = _ownerTransform.position;
             _navMeshAgent.SetDestination(destinationHit.position);
-            Velocity = _navMeshAgent.desiredVelocity.sqrMagnitude > 0.001f
-                ? _navMeshAgent.desiredVelocity
-                : Velocity;
+            navVelocity = _navMeshAgent.desiredVelocity.sqrMagnitude > 0.001f
+                ? Vector3.ClampMagnitude(_navMeshAgent.desiredVelocity, speed)
+                : BuildSteeringVelocity(speed);
 
-            if (Velocity.sqrMagnitude > 0.001f)
-                FaceDirection(Velocity);
+            if (navVelocity.sqrMagnitude > 0.001f)
+                FaceDirection(navVelocity);
 
             IsArrived = !_navMeshAgent.pathPending
                         && _navMeshAgent.remainingDistance <= arriveDistance;
             return true;
+        }
+
+        private Vector3 BuildSteeringVelocity(float speed)
+        {
+            if (_navMeshAgent == null || _navMeshAgent.pathPending)
+            {
+                return Vector3.zero;
+            }
+
+            Vector3 toSteeringTarget = _navMeshAgent.steeringTarget - _ownerTransform.position;
+            toSteeringTarget.y = 0f;
+            return toSteeringTarget.sqrMagnitude > 0.001f
+                ? Vector3.ClampMagnitude(toSteeringTarget.normalized * speed, speed)
+                : Vector3.zero;
+        }
+
+        private void MoveWithGravity(Vector3 horizontalVelocity)
+        {
+            if (_characterController == null || !_characterController.enabled)
+            {
+                _ownerTransform.position += horizontalVelocity * Time.deltaTime;
+                return;
+            }
+
+            if (_characterController.isGrounded && _verticalVelocity < 0f)
+                _verticalVelocity = -2f;
+            else
+                _verticalVelocity += Gravity * Time.deltaTime;
+
+            Vector3 velocity = horizontalVelocity + Vector3.up * _verticalVelocity;
+            _characterController.Move(velocity * Time.deltaTime);
+
+            if (_navMeshAgent != null && _navMeshAgent.enabled && _navMeshAgent.isOnNavMesh)
+                _navMeshAgent.nextPosition = _ownerTransform.position;
         }
     }
 }

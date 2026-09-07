@@ -18,6 +18,11 @@ using Villains.Visuals;
 
 public static class VillainPrefabBuilder
 {
+    private const float PickaxeVillainScale = 3f;
+    private const float VillainMoveSpeed = 7.5f;
+    private const float VillainFleeSpeed = 10.5f;
+    private const float VillainRotationSpeed = 720f;
+
     private const string BuilderSourcePath = "Assets/Job-Stickmans-Character-Pack-SS/Prefabs/Stickman-Builder.prefab";
     private const string MinerSourcePath = "Assets/Job-Stickmans-Character-Pack-SS/Prefabs/Stickman-Miner.prefab";
     private const string AnimatorPath = "Assets/YKJ/Animation/PlayerAnimator.controller";
@@ -101,6 +106,48 @@ public static class VillainPrefabBuilder
         Debug.Log("Convenience Store NavMesh surface baked.");
     }
 
+    [MenuItem("Tools/Villains/Bake Convenience Store NavMesh No Prompt")]
+    public static void BakeConvenienceStoreNavMeshNoPrompt()
+    {
+        Scene scene = EditorSceneManager.OpenScene(ConvenienceStoreScenePath, OpenSceneMode.Single);
+        BakeActiveConvenienceStoreNavMesh(scene);
+    }
+
+    public static void BakeConvenienceStoreNavMeshBatch()
+    {
+        Scene scene = EditorSceneManager.OpenScene(ConvenienceStoreScenePath, OpenSceneMode.Single);
+        BakeActiveConvenienceStoreNavMesh(scene);
+    }
+
+    private static void BakeActiveConvenienceStoreNavMesh(Scene scene)
+    {
+        NavMeshSurface surface = Object.FindFirstObjectByType<NavMeshSurface>();
+        if (surface == null)
+        {
+            GameObject surfaceObject = new GameObject("Convenience Store NavMesh Surface");
+            surface = surfaceObject.AddComponent<NavMeshSurface>();
+        }
+
+        surface.agentTypeID = 0;
+        surface.collectObjects = CollectObjects.All;
+        surface.layerMask = ~0;
+        surface.useGeometry = NavMeshCollectGeometry.PhysicsColliders;
+        surface.defaultArea = 0;
+        surface.ignoreNavMeshAgent = true;
+        surface.ignoreNavMeshObstacle = true;
+        surface.overrideVoxelSize = true;
+        surface.voxelSize = 0.08f;
+        surface.minRegionArea = 0.35f;
+
+        surface.BuildNavMesh();
+        EditorUtility.SetDirty(surface);
+        EditorSceneManager.MarkSceneDirty(scene);
+        EditorSceneManager.SaveScene(scene);
+        AssetDatabase.SaveAssets();
+        AssetDatabase.Refresh();
+        Debug.Log("Convenience Store NavMesh surface baked without prompt.");
+    }
+
     private static void BuildBrickVillain()
     {
         GameObject root = PrefabUtility.LoadPrefabContents(BuilderSourcePath);
@@ -139,6 +186,7 @@ public static class VillainPrefabBuilder
         {
             root.name = "Pickaxe Villain";
             ConfigureSharedVillainRoot(root);
+            root.transform.localScale = Vector3.one * PickaxeVillainScale;
 
             PickaxeVillain villain = EnsureComponent<PickaxeVillain>(root);
             ConfigureVillain(villain, new Vector3(0f, 0f, -12f));
@@ -204,6 +252,7 @@ public static class VillainPrefabBuilder
 
             GameObject visual = (GameObject)PrefabUtility.InstantiatePrefab(spatulaModel, root.transform);
             visual.name = "Spatula Visual";
+            StripNonProjectileVisualComponents(visual);
             visual.transform.SetLocalPositionAndRotation(Vector3.zero, Quaternion.Euler(0f, 90f, 0f));
             visual.transform.localScale = Vector3.one * 0.12f;
 
@@ -227,12 +276,16 @@ public static class VillainPrefabBuilder
 
         Projectile spatulaProjectile = LoadProjectile(SpatulaProjectilePath);
         GameObject spatulaModel = AssetDatabase.LoadAssetAtPath<GameObject>(SpatulaModelPath);
+        GameObject pickaxeVillain = AssetDatabase.LoadAssetAtPath<GameObject>(PickaxeOutputPath);
         ProjectileThrowDataSO spatulaThrowData = AssetDatabase.LoadAssetAtPath<ProjectileThrowDataSO>(SpatulaThrowDataPath);
 
         SerializedObject serializedObject = new SerializedObject(settings);
+        serializedObject.FindProperty("_pickaxeVillainPrefab").objectReferenceValue = pickaxeVillain;
         serializedObject.FindProperty("_spatulaProjectilePrefab").objectReferenceValue = spatulaProjectile;
         serializedObject.FindProperty("_spatulaProjectileVisualPrefab").objectReferenceValue = spatulaModel;
         serializedObject.FindProperty("_spatulaThrowData").objectReferenceValue = spatulaThrowData;
+        serializedObject.FindProperty("_chefVillainSpawnChance").floatValue = 0.35f;
+        serializedObject.FindProperty("_pickaxeVillainSpawnChance").floatValue = 0.35f;
         serializedObject.ApplyModifiedPropertiesWithoutUndo();
         EditorUtility.SetDirty(settings);
     }
@@ -256,9 +309,18 @@ public static class VillainPrefabBuilder
         EnsureComponent<VillainTargetProvider>(root);
         ConfigureTargetDetector(EnsureComponent<VillainTargetDetector>(root));
         EnsureComponent<VillainDetectionVisualizer>(root);
-        EnsureComponent<VillainMovement>(root);
+        ConfigureMovement(EnsureComponent<VillainMovement>(root));
         EnsureComponent<AgentRenderer>(root);
         EnsureComponent<VillainAnimationEventRelay>(root);
+    }
+
+    private static void ConfigureMovement(VillainMovement movement)
+    {
+        SerializedObject serializedObject = new SerializedObject(movement);
+        serializedObject.FindProperty("moveSpeed").floatValue = VillainMoveSpeed;
+        serializedObject.FindProperty("fleeSpeed").floatValue = VillainFleeSpeed;
+        serializedObject.FindProperty("rotationSpeed").floatValue = VillainRotationSpeed;
+        serializedObject.ApplyModifiedPropertiesWithoutUndo();
     }
 
     private static void ConfigureVillain(BrickVillain villain, Vector3 fallbackFleeDestination)
@@ -335,5 +397,31 @@ public static class VillainPrefabBuilder
         PrefabUtility.SaveAsPrefabAsset(root, path, out bool success);
         if (!success)
             throw new System.InvalidOperationException($"Failed to save prefab: {path}");
+    }
+
+    private static void StripNonProjectileVisualComponents(GameObject visualRoot)
+    {
+        if (visualRoot == null)
+        {
+            return;
+        }
+
+        foreach (Camera camera in visualRoot.GetComponentsInChildren<Camera>(true))
+        {
+            camera.enabled = false;
+            Object.DestroyImmediate(camera);
+        }
+
+        foreach (Light light in visualRoot.GetComponentsInChildren<Light>(true))
+        {
+            light.enabled = false;
+            Object.DestroyImmediate(light);
+        }
+
+        foreach (AudioListener listener in visualRoot.GetComponentsInChildren<AudioListener>(true))
+        {
+            listener.enabled = false;
+            Object.DestroyImmediate(listener);
+        }
     }
 }

@@ -1,5 +1,6 @@
 using System.Collections;
 using CWH.GameFlow;
+using System.Collections.Generic;
 using CWH.Player.Health;
 using UnityEngine;
 using UnityEngine.SceneManagement;
@@ -11,6 +12,9 @@ namespace CWH.Villains
     {
         private const string SettingsResourceName = "VillainSpawnSettings";
         private const string ConvenienceStoreScenePath = "Assets/IYC/00.Scene/ConvenienceStore.unity";
+        private const float GroundProbeHeight = 8f;
+        private const float GroundProbeDistance = 20f;
+        private static readonly RaycastHit[] GroundHits = new RaycastHit[16];
         private static readonly string[] EntranceDoorNames =
         {
             "automaticDoor_L_gp",
@@ -29,6 +33,17 @@ namespace CWH.Villains
         private Vector3 _outsideDoorPosition;
         private Transform[] _spawnPoints = new Transform[0];
         private Transform[] _roamPoints = new Transform[0];
+
+        public static event System.Action<string> VillainEnteredStore;
+        public static event System.Action VillainBecameAngry;
+
+        private enum SpawnKind
+        {
+            Brick,
+            Chef,
+            Pickaxe,
+            ProductDisturber
+        }
 
         [RuntimeInitializeOnLoadMethod(RuntimeInitializeLoadType.AfterSceneLoad)]
         private static void InstallInConvenienceStore()
@@ -56,6 +71,8 @@ namespace CWH.Villains
                 return;
             }
 
+            ConvenienceStoreNavMeshBootstrapper.EnsureBuiltForActiveScene();
+
             VillainSpawnSettings settings = Resources.Load<VillainSpawnSettings>(SettingsResourceName);
             GameObject player = FindPlayerObject();
             if (settings == null || player == null)
@@ -81,6 +98,8 @@ namespace CWH.Villains
 
         public static void RequestAllVillainsFlee()
         {
+            ConvenienceStoreNavMeshBootstrapper.EnsureBuiltForActiveScene();
+
             global::Villains.BrickVillain[] fsmVillains = FindObjectsByType<global::Villains.BrickVillain>(
                 FindObjectsInactive.Exclude,
                 FindObjectsSortMode.None);
@@ -112,6 +131,16 @@ namespace CWH.Villains
             {
                 villain.FleeFromStore();
             }
+        }
+
+        public static void NotifyVillainEnteredStore(string villainName)
+        {
+            VillainEnteredStore?.Invoke(string.IsNullOrWhiteSpace(villainName) ? "진상" : villainName);
+        }
+
+        public static void NotifyVillainBecameAngry()
+        {
+            VillainBecameAngry?.Invoke();
         }
 
         private void Awake()
@@ -180,6 +209,11 @@ namespace CWH.Villains
                 return;
             }
 
+            if (!tutorial && HasReachedActiveVillainLimit())
+            {
+                return;
+            }
+
             bool useCustomSpawnPoint = TryGetRandomPoint(_spawnPoints, out Vector3 spawnPosition);
             if (tutorial)
             {
@@ -190,13 +224,15 @@ namespace CWH.Villains
             {
                 spawnPosition = ResolveSpawnHeight(spawnPosition);
             }
+            else
+            {
+                spawnPosition = _outsideDoorPosition;
+            }
 
-            Vector3 entryDirection = useCustomSpawnPoint
-                ? ResolveInitialFacing(spawnPosition)
-                : Flatten(_insideDoorPosition - _outsideDoorPosition);
+            Vector3 entryDirection = Flatten(_insideDoorPosition - spawnPosition);
             if (entryDirection.sqrMagnitude < 0.001f)
             {
-                entryDirection = Flatten(_player.position - _outsideDoorPosition);
+                entryDirection = ResolveInitialFacing(spawnPosition);
             }
 
             entryDirection = entryDirection.sqrMagnitude > 0.001f
@@ -204,23 +240,34 @@ namespace CWH.Villains
                 : Vector3.forward;
 
             float mischiefDelay = Random.Range(_settings.MinimumMischiefDelay, _settings.MaximumMischiefDelay);
-            if (!tutorial && ShouldSpawnChefVillain())
+            SpawnKind spawnKind = tutorial ? SpawnKind.Brick : PickSpawnKind();
+            if (spawnKind == SpawnKind.Chef)
             {
                 Debug.Log($"Spawning Chef Spatula Villain at {spawnPosition}");
                 SpawnChefVillain(
-                    useCustomSpawnPoint,
-                    useCustomSpawnPoint ? spawnPosition : _outsideDoorPosition,
+                    spawnPosition,
                     entryDirection,
                     mischiefDelay);
                 return;
             }
 
-            if (!tutorial && ShouldSpawnProductDisturber())
+            if (spawnKind == SpawnKind.ProductDisturber)
             {
                 Debug.Log($"Spawning Product Disturber Villain at {spawnPosition}");
                 SpawnProductDisturber(
-                    useCustomSpawnPoint,
-                    useCustomSpawnPoint ? spawnPosition : _outsideDoorPosition,
+                    spawnPosition,
+                    entryDirection,
+                    mischiefDelay);
+                return;
+            }
+
+            if (spawnKind == SpawnKind.Pickaxe)
+            {
+                Debug.Log($"Spawning Pickaxe Villain at {spawnPosition}");
+                SpawnFsmVillain(
+                    _settings.PickaxeVillainPrefab,
+                    "Pickaxe Villain",
+                    spawnPosition,
                     entryDirection,
                     mischiefDelay);
                 return;
@@ -228,7 +275,7 @@ namespace CWH.Villains
 
             GameObject villainObject = Instantiate(
                 _settings.VillainVisualPrefab,
-                useCustomSpawnPoint ? spawnPosition : _outsideDoorPosition,
+                spawnPosition,
                 Quaternion.LookRotation(entryDirection, Vector3.up));
             villainObject.name = "Brick Villain";
             if (tutorial) TutorialVillain = villainObject;
@@ -245,6 +292,7 @@ namespace CWH.Villains
                 }
 
                 roamer.Configure(fsmVillain, _settings, _roamPoints, mischiefDelay);
+                roamer.ConfigureEntry(_insideDoorPosition);
                 return;
             }
 
@@ -255,21 +303,60 @@ namespace CWH.Villains
                 _player,
                 _insideDoorPosition,
                 _outsideDoorPosition,
-                !useCustomSpawnPoint,
+                true,
                 mischiefDelay,
                 _roamPoints);
         }
 
-        private bool ShouldSpawnChefVillain()
+        private SpawnKind PickSpawnKind()
+        {
+            float brickWeight = _settings.VillainVisualPrefab != null ? 1f : 0f;
+            float chefWeight = CanSpawnChefVillain() ? Mathf.Max(0f, _settings.ChefVillainSpawnChance) : 0f;
+            float pickaxeWeight = CanSpawnPickaxeVillain() ? Mathf.Max(0f, _settings.PickaxeVillainSpawnChance) : 0f;
+            float productDisturberWeight = CanSpawnProductDisturber()
+                ? Mathf.Max(0f, _settings.ProductDisturberSpawnChance)
+                : 0f;
+
+            float totalWeight = brickWeight + chefWeight + pickaxeWeight + productDisturberWeight;
+            if (totalWeight <= 0f)
+            {
+                return SpawnKind.Brick;
+            }
+
+            float roll = Random.value * totalWeight;
+            if (roll < chefWeight)
+            {
+                return SpawnKind.Chef;
+            }
+
+            roll -= chefWeight;
+            if (roll < pickaxeWeight)
+            {
+                return SpawnKind.Pickaxe;
+            }
+
+            roll -= pickaxeWeight;
+            if (roll < productDisturberWeight)
+            {
+                return SpawnKind.ProductDisturber;
+            }
+
+            return SpawnKind.Brick;
+        }
+
+        private bool CanSpawnChefVillain()
         {
             return _settings.ChefVillainVisualPrefab != null
                    && _settings.SpatulaProjectileVisualPrefab != null
-                   && _settings.SpatulaThrowData != null
-                   && Random.value <= _settings.ChefVillainSpawnChance;
+                   && _settings.SpatulaThrowData != null;
+        }
+
+        private bool CanSpawnPickaxeVillain()
+        {
+            return _settings.PickaxeVillainPrefab != null;
         }
 
         private void SpawnChefVillain(
-            bool spawnedInside,
             Vector3 spawnPosition,
             Vector3 entryDirection,
             float mischiefDelay)
@@ -293,19 +380,17 @@ namespace CWH.Villains
                 _player,
                 _insideDoorPosition,
                 _outsideDoorPosition,
-                !spawnedInside,
-                0f,
+                true,
+                mischiefDelay,
                 _roamPoints);
         }
 
-        private bool ShouldSpawnProductDisturber()
+        private bool CanSpawnProductDisturber()
         {
-            return _settings.ProductDisturberVisualPrefab != null
-                   && Random.value <= _settings.ProductDisturberSpawnChance;
+            return _settings.ProductDisturberVisualPrefab != null;
         }
 
         private void SpawnProductDisturber(
-            bool spawnedInside,
             Vector3 spawnPosition,
             Vector3 entryDirection,
             float mischiefDelay)
@@ -332,9 +417,105 @@ namespace CWH.Villains
                 _settings,
                 _insideDoorPosition,
                 _outsideDoorPosition,
-                !spawnedInside,
+                true,
                 mischiefDelay,
                 _roamPoints);
+        }
+
+        private void SpawnFsmVillain(
+            GameObject prefab,
+            string instanceName,
+            Vector3 spawnPosition,
+            Vector3 entryDirection,
+            float mischiefDelay)
+        {
+            if (prefab == null)
+            {
+                return;
+            }
+
+            GameObject villainObject = Instantiate(
+                prefab,
+                spawnPosition,
+                Quaternion.LookRotation(entryDirection, Vector3.up));
+            villainObject.name = instanceName;
+
+            if (instanceName.Contains("Pickaxe"))
+            {
+                villainObject.transform.localScale = Vector3.one * _settings.VisualScale;
+            }
+
+            global::Villains.BrickVillain fsmVillain = villainObject.GetComponent<global::Villains.BrickVillain>();
+            if (fsmVillain == null)
+            {
+                RuntimeBrickVillain runtimeVillain = villainObject.GetComponent<RuntimeBrickVillain>();
+                if (runtimeVillain == null)
+                {
+                    runtimeVillain = villainObject.AddComponent<RuntimeBrickVillain>();
+                }
+
+                runtimeVillain.Initialize(
+                    _settings,
+                    _player,
+                    _insideDoorPosition,
+                    _outsideDoorPosition,
+                    true,
+                    mischiefDelay,
+                    _roamPoints);
+                return;
+            }
+
+            fsmVillain.SetFallbackFleeDestination(_outsideDoorPosition);
+            RuntimeVillainRoamer roamer = villainObject.GetComponent<RuntimeVillainRoamer>();
+            if (roamer == null)
+            {
+                roamer = villainObject.AddComponent<RuntimeVillainRoamer>();
+            }
+
+            roamer.Configure(fsmVillain, _settings, _roamPoints, mischiefDelay);
+            roamer.ConfigureEntry(_insideDoorPosition);
+        }
+
+        private bool HasReachedActiveVillainLimit()
+        {
+            return _settings != null && CountActiveVillains() >= _settings.MaximumActiveVillains;
+        }
+
+        private static int CountActiveVillains()
+        {
+            HashSet<GameObject> activeVillains = new();
+            AddActiveVillains(FindObjectsByType<RuntimeBrickVillain>(
+                FindObjectsInactive.Exclude,
+                FindObjectsSortMode.None), activeVillains);
+            AddActiveVillains(FindObjectsByType<RuntimeProductDisturberVillain>(
+                FindObjectsInactive.Exclude,
+                FindObjectsSortMode.None), activeVillains);
+            AddActiveVillains(FindObjectsByType<global::Villains.BrickVillain>(
+                FindObjectsInactive.Exclude,
+                FindObjectsSortMode.None), activeVillains);
+            AddActiveVillains(FindObjectsByType<global::Villains.BrickThrowingVillain>(
+                FindObjectsInactive.Exclude,
+                FindObjectsSortMode.None), activeVillains);
+            return activeVillains.Count;
+        }
+
+        private static void AddActiveVillains<T>(T[] villains, HashSet<GameObject> activeVillains)
+            where T : Component
+        {
+            if (villains == null)
+            {
+                return;
+            }
+
+            foreach (T villain in villains)
+            {
+                if (villain == null || !villain.gameObject.activeInHierarchy)
+                {
+                    continue;
+                }
+
+                activeVillains.Add(villain.gameObject);
+            }
         }
 
         private void ResolveScenePoints()
@@ -347,8 +528,12 @@ namespace CWH.Villains
             VillainRoamPoint[] roamPoints = FindObjectsByType<VillainRoamPoint>(
                 FindObjectsInactive.Exclude,
                 FindObjectsSortMode.None);
-            _roamPoints = ExtractTransforms(roamPoints);
-            Debug.Log($"Villain spawner found {_spawnPoints.Length} spawn points and {_roamPoints.Length} roam points.");
+
+            VillainCheckpoint[] checkpoints = FindObjectsByType<VillainCheckpoint>(
+                FindObjectsInactive.Exclude,
+                FindObjectsSortMode.None);
+            _roamPoints = ExtractUniqueTransforms(roamPoints, checkpoints);
+            Debug.Log($"Villain spawner found {_spawnPoints.Length} spawn points and {_roamPoints.Length} checkpoints.");
         }
 
         private static Transform[] ExtractTransforms<T>(T[] points)
@@ -366,6 +551,34 @@ namespace CWH.Villains
             }
 
             return transforms;
+        }
+
+        private static Transform[] ExtractUniqueTransforms(VillainRoamPoint[] roamPoints, VillainCheckpoint[] checkpoints)
+        {
+            List<Transform> transforms = new();
+            HashSet<Transform> seen = new();
+            AddTransforms(roamPoints, transforms, seen);
+            AddTransforms(checkpoints, transforms, seen);
+            return transforms.ToArray();
+        }
+
+        private static void AddTransforms<T>(T[] points, List<Transform> transforms, HashSet<Transform> seen)
+            where T : Component
+        {
+            if (points == null)
+            {
+                return;
+            }
+
+            foreach (T point in points)
+            {
+                if (point == null || !seen.Add(point.transform))
+                {
+                    continue;
+                }
+
+                transforms.Add(point.transform);
+            }
         }
 
         private static bool TryGetRandomPoint(Transform[] points, out Vector3 position)
@@ -400,13 +613,9 @@ namespace CWH.Villains
 
         private Vector3 ResolveSpawnHeight(Vector3 spawnPosition)
         {
-            float footHeight = FindPlayerFootHeight();
-            if (Mathf.Abs(spawnPosition.y - footHeight) > 2f)
-            {
-                spawnPosition.y = footHeight;
-            }
-
-            return spawnPosition;
+            return TryProjectToGround(spawnPosition, out Vector3 groundedPosition)
+                ? groundedPosition
+                : spawnPosition;
         }
 
         private static GameObject FindPlayerObject()
@@ -454,9 +663,8 @@ namespace CWH.Villains
                 behindPlayer.Normalize();
                 _insideDoorPosition = _player.position + behindPlayer * 2f;
                 _outsideDoorPosition = _player.position + behindPlayer * _settings.SpawnDistanceBehindPlayer;
-                float fallbackHeight = FindPlayerFootHeight();
-                _insideDoorPosition.y = fallbackHeight;
-                _outsideDoorPosition.y = fallbackHeight;
+                _insideDoorPosition = ResolveSpawnHeight(_insideDoorPosition);
+                _outsideDoorPosition = ResolveSpawnHeight(_outsideDoorPosition);
                 Debug.LogWarning("Automatic entrance door was not found. Villains will use the fallback route behind the Player.");
                 return;
             }
@@ -469,11 +677,10 @@ namespace CWH.Villains
             }
 
             insideDirection.Normalize();
-            float groundHeight = FindPlayerFootHeight();
             _insideDoorPosition = doorCenter + insideDirection * _settings.DoorInsideDistance;
             _outsideDoorPosition = doorCenter - insideDirection * _settings.DoorOutsideDistance;
-            _insideDoorPosition.y = groundHeight;
-            _outsideDoorPosition.y = groundHeight;
+            _insideDoorPosition = ResolveSpawnHeight(_insideDoorPosition);
+            _outsideDoorPosition = ResolveSpawnHeight(_outsideDoorPosition);
         }
 
         private static bool TryGetEntranceDoorBounds(out Bounds doorBounds)
@@ -521,15 +728,40 @@ namespace CWH.Villains
             }
         }
 
-        private float FindPlayerFootHeight()
+        private static bool TryProjectToGround(Vector3 position, out Vector3 groundedPosition)
         {
-            CharacterController playerController = _player.GetComponent<CharacterController>();
-            if (playerController == null)
+            if (UnityEngine.AI.NavMesh.SamplePosition(position, out UnityEngine.AI.NavMeshHit navMeshHit, 3f, UnityEngine.AI.NavMesh.AllAreas))
             {
-                return _player.position.y;
+                groundedPosition = navMeshHit.position;
+                return true;
             }
 
-            return _player.position.y + playerController.center.y - playerController.height * 0.5f;
+            Vector3 origin = position + Vector3.up * GroundProbeHeight;
+            int hitCount = Physics.RaycastNonAlloc(
+                origin,
+                Vector3.down,
+                GroundHits,
+                GroundProbeDistance,
+                Physics.DefaultRaycastLayers,
+                QueryTriggerInteraction.Ignore);
+
+            float closestDistance = float.MaxValue;
+            groundedPosition = position;
+            bool foundGround = false;
+            for (int i = 0; i < hitCount; i++)
+            {
+                RaycastHit hit = GroundHits[i];
+                if (hit.transform == null || hit.normal.y < 0.45f || hit.distance >= closestDistance)
+                {
+                    continue;
+                }
+
+                closestDistance = hit.distance;
+                groundedPosition = new Vector3(position.x, hit.point.y, position.z);
+                foundGround = true;
+            }
+
+            return foundGround;
         }
 
         private static Vector3 Flatten(Vector3 vector)

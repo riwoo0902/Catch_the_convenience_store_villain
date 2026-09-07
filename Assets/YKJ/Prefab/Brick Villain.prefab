@@ -578,9 +578,9 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: b20d7bb8a5e8e29438daae7d82a1b7bc, type: 3}
   m_Name: 
   m_EditorClassIdentifier: Client::Villains.Movement.VillainMovement
-  moveSpeed: 4
-  fleeSpeed: 6.5
-  rotationSpeed: 540
+  moveSpeed: 7.5
+  fleeSpeed: 10.5
+  rotationSpeed: 720
   arriveDistance: 0.4
 --- !u!114 &7100100000000000006
 MonoBehaviour:

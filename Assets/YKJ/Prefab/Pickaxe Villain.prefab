@@ -25,7 +25,7 @@ Transform:
   m_GameObject: {fileID: 93282967090878188}
   m_LocalRotation: {x: -0.010618073, y: -0.033002675, z: -0.09793688, w: 0.9945886}
   m_LocalPosition: {x: 0.022879904, y: 0.1253958, z: 0.0009261569}
-  m_LocalScale: {x: 1, y: 1, z: 1}
+  m_LocalScale: {x: 3, y: 3, z: 3}
   m_ConstrainProportionsScale: 0
   m_Children:
   - {fileID: 351389169274269464}
@@ -2540,9 +2540,9 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: b20d7bb8a5e8e29438daae7d82a1b7bc, type: 3}
   m_Name: 
   m_EditorClassIdentifier: Client::Villains.Movement.VillainMovement
-  moveSpeed: 4
-  fleeSpeed: 6.5
-  rotationSpeed: 540
+  moveSpeed: 7.5
+  fleeSpeed: 10.5
+  rotationSpeed: 720
   arriveDistance: 0.4
 --- !u!114 &7100200000000000006
 MonoBehaviour:
