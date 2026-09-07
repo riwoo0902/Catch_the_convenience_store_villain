@@ -14,6 +14,8 @@ using UnityEngine.UI;
 
 namespace CWH.Player.UI
 {
+    public enum PhoneApp { None, Home, Clock, Stocks, Youtube, Mail, Phone }
+
     [DisallowMultipleComponent]
     public sealed class PlayerHUDController : MonoBehaviour
     {
@@ -26,6 +28,10 @@ namespace CWH.Player.UI
 
         private PlayerHealth _health;
         private TextMeshProUGUI _healthText;
+        private GameObject _mailToastPanel;
+        private TextMeshProUGUI _mailToastText;
+        private float _mailToastHideTime;
+        private int _questRevision = -1;
         private GameObject _policeCountdownPanel;
         private TextMeshProUGUI _policeCountdownText;
         private GameObject _phoneOverlay;
@@ -35,6 +41,7 @@ namespace CWH.Player.UI
         private GameObject _mailScreen;
         private GameObject _stocksScreen;
         private GameObject _clockScreen;
+        private TextMeshProUGUI _homeStatusText;
         private TextMeshProUGUI _clockTimeText;
         private TextMeshProUGUI _clockRemainingText;
         private RectTransform _clockProgressFill;
@@ -63,6 +70,26 @@ namespace CWH.Player.UI
         private int _lastRemainingMinutes = -1;
         private int _lastScreenWidth;
         private int _lastScreenHeight;
+        private readonly System.Collections.Generic.Dictionary<string, Button> _tutorialButtons = new();
+        private RectTransform _tutorialHighlight;
+
+        public event System.Action<string> PhoneActionPerformed;
+        public string DialedNumber => _dialedNumber;
+
+        public bool IsPhoneOpen => _phoneOverlay != null && _phoneOverlay.activeInHierarchy;
+        public PhoneApp CurrentApp
+        {
+            get
+            {
+                if (!IsPhoneOpen) return PhoneApp.None;
+                if (_clockScreen.activeSelf) return PhoneApp.Clock;
+                if (_stocksScreen.activeSelf) return PhoneApp.Stocks;
+                if (_youtubeScreen.activeSelf) return PhoneApp.Youtube;
+                if (_mailScreen.activeSelf) return PhoneApp.Mail;
+                if (_phoneDialerScreen.activeSelf) return PhoneApp.Phone;
+                return PhoneApp.Home;
+            }
+        }
 
         [RuntimeInitializeOnLoadMethod(RuntimeInitializeLoadType.BeforeSceneLoad)]
         private static void RegisterSceneInstallation()
@@ -129,7 +156,7 @@ namespace CWH.Player.UI
             }
             else
             {
-                _healthText.SetText("HP -- / --");
+                _healthText.SetText("-- / --");
             }
 
             _phoneOverlay.SetActive(false);
@@ -138,6 +165,27 @@ namespace CWH.Player.UI
 
         private void Update()
         {
+            if (_mailToastPanel != null && _mailToastPanel.activeSelf && Time.unscaledTime >= _mailToastHideTime)
+            {
+                _mailToastPanel.SetActive(false);
+            }
+
+            if (_questRevision != ShiftQuestBoard.Revision)
+            {
+                string announcement = ShiftQuestBoard.TakeAnnouncement();
+                if (!string.IsNullOrEmpty(announcement))
+                {
+                    ShowMailToast(announcement);
+                }
+
+                // Repaint only while the inbox is open; otherwise wait until the player opens it.
+                if (_mailScreen != null && _mailScreen.activeInHierarchy)
+                {
+                    _questRevision = ShiftQuestBoard.Revision;
+                    RefreshQuestMail();
+                }
+            }
+
             if (!_gameplayEnabled || !GameLoopController.AllowsGameplay)
             {
                 if (_phoneOverlay.activeSelf || _policeCallPending)
@@ -220,7 +268,54 @@ namespace CWH.Player.UI
             BuildMailQuestScreen();
             BuildClockScreen();
             BuildPoliceCountdownDisplay(canvasRect);
+            BuildMailToast(canvasRect);
             RefreshPhoneSize();
+            foreach (Button button in _phoneOverlay.GetComponentsInChildren<Button>(true))
+            {
+                _tutorialButtons[button.name] = button;
+                button.onClick.AddListener(() => PhoneActionPerformed?.Invoke(button.name));
+            }
+        }
+
+        /// <summary>Returns the highlighted button so guidance text can be placed beside it.</summary>
+        public RectTransform HighlightTutorialButton(string buttonName)
+        {
+            if (string.IsNullOrEmpty(buttonName) || !_tutorialButtons.TryGetValue(buttonName, out Button button)
+                || !button.gameObject.activeInHierarchy)
+            {
+                if (_tutorialHighlight != null) _tutorialHighlight.gameObject.SetActive(false);
+                return null;
+            }
+            if (_tutorialHighlight == null)
+            {
+                _tutorialHighlight = (RectTransform)CreateRectObject("Tutorial Button Highlight", button.transform).transform;
+                for (int edge = 0; edge < 4; edge++)
+                {
+                    RectTransform border = (RectTransform)CreateRectObject("Border", _tutorialHighlight).transform;
+                    StretchToParent(border);
+                    if (edge < 2)
+                    {
+                        border.anchorMin = new Vector2(0f, edge);
+                        border.anchorMax = new Vector2(1f, edge);
+                        border.sizeDelta = new Vector2(0f, 5f);
+                    }
+                    else
+                    {
+                        border.anchorMin = new Vector2(edge - 2, 0f);
+                        border.anchorMax = new Vector2(edge - 2, 1f);
+                        border.sizeDelta = new Vector2(5f, 0f);
+                    }
+                    Image outline = border.gameObject.AddComponent<Image>();
+                    outline.color = new Color(1f, 0.72f, 0.15f);
+                    outline.raycastTarget = false;
+                }
+            }
+            _tutorialHighlight.SetParent(button.transform, false);
+            StretchToParent(_tutorialHighlight);
+            _tutorialHighlight.offsetMin = new Vector2(-7f, -7f);
+            _tutorialHighlight.offsetMax = new Vector2(7f, 7f);
+            _tutorialHighlight.gameObject.SetActive(true);
+            return (RectTransform)button.transform;
         }
 
         private void BuildHomeScreen(PlayerHUDSettings settings)
@@ -229,13 +324,14 @@ namespace CWH.Player.UI
             RectTransform homeRect = (RectTransform)_homeScreen.transform;
             SetPhoneContentAnchors(homeRect);
 
-            GameObject title = CreateTextObject("HomeTitle", homeRect, "APPS", 28f, FontStyles.Bold, TextAlignmentOptions.Center);
-            RectTransform titleRect = (RectTransform)title.transform;
-            titleRect.anchorMin = new Vector2(0.1f, 0.85f);
-            titleRect.anchorMax = new Vector2(0.9f, 0.95f);
-            titleRect.offsetMin = Vector2.zero;
-            titleRect.offsetMax = Vector2.zero;
-            title.GetComponent<TextMeshProUGUI>().color = new Color(0.12f, 0.12f, 0.15f, 1f);
+            GameObject statusBar = CreateTextObject("HomeStatusBar", homeRect, "20:00", 17f, FontStyles.Normal, TextAlignmentOptions.Right);
+            RectTransform statusBarRect = (RectTransform)statusBar.transform;
+            statusBarRect.anchorMin = new Vector2(0.12f, 0.88f);
+            statusBarRect.anchorMax = new Vector2(0.88f, 0.95f);
+            statusBarRect.offsetMin = Vector2.zero;
+            statusBarRect.offsetMax = Vector2.zero;
+            _homeStatusText = statusBar.GetComponent<TextMeshProUGUI>();
+            _homeStatusText.color = new Color(0.4f, 0.41f, 0.45f, 1f);
 
             GameObject phoneButtonObject = CreateRectObject("PhoneButton", homeRect);
             RectTransform phoneButtonRect = (RectTransform)phoneButtonObject.transform;
@@ -254,7 +350,7 @@ namespace CWH.Player.UI
                 CreatePhoneHandsetIcon(phoneButtonRect);
             }
 
-            GameObject phoneLabel = CreateTextObject("PhoneLabel", homeRect, "Phone", 20f, FontStyles.Bold, TextAlignmentOptions.Center);
+            GameObject phoneLabel = CreateTextObject("PhoneLabel", homeRect, "전화", 18f, FontStyles.Normal, TextAlignmentOptions.Center);
             SetHomeAppRect((RectTransform)phoneLabel.transform, 0, 0, true);
             phoneLabel.GetComponent<TextMeshProUGUI>().color = new Color(0.12f, 0.12f, 0.15f, 1f);
 
@@ -271,7 +367,7 @@ namespace CWH.Player.UI
             youtubeButton.targetGraphic = youtubeImage;
             youtubeButton.onClick.AddListener(ShowYoutubeScreen);
 
-            GameObject appLabel = CreateTextObject("YoutubeLabel", homeRect, "YouTube", 20f, FontStyles.Bold, TextAlignmentOptions.Center);
+            GameObject appLabel = CreateTextObject("YoutubeLabel", homeRect, "YouTube", 18f, FontStyles.Normal, TextAlignmentOptions.Center);
             RectTransform appLabelRect = (RectTransform)appLabel.transform;
             SetHomeAppRect(appLabelRect, 1, 0, true);
             appLabel.GetComponent<TextMeshProUGUI>().color = new Color(0.12f, 0.12f, 0.15f, 1f);
@@ -293,7 +389,7 @@ namespace CWH.Player.UI
                 CreateStocksChartIcon(stocksButtonRect);
             }
 
-            GameObject stocksLabel = CreateTextObject("StocksLabel", homeRect, "Stocks", 20f, FontStyles.Bold, TextAlignmentOptions.Center);
+            GameObject stocksLabel = CreateTextObject("StocksLabel", homeRect, "주식", 18f, FontStyles.Normal, TextAlignmentOptions.Center);
             SetHomeAppRect((RectTransform)stocksLabel.transform, 0, 1, true);
             stocksLabel.GetComponent<TextMeshProUGUI>().color = new Color(0.12f, 0.12f, 0.15f, 1f);
 
@@ -314,7 +410,7 @@ namespace CWH.Player.UI
                 CreateMailEnvelopeIcon(mailButtonRect);
             }
 
-            GameObject mailLabel = CreateTextObject("MailLabel", homeRect, "메일", 20f, FontStyles.Bold, TextAlignmentOptions.Center);
+            GameObject mailLabel = CreateTextObject("MailLabel", homeRect, "메일", 18f, FontStyles.Normal, TextAlignmentOptions.Center);
             SetHomeAppRect((RectTransform)mailLabel.transform, 1, 1, true);
             mailLabel.GetComponent<TextMeshProUGUI>().color = new Color(0.12f, 0.12f, 0.15f, 1f);
 
@@ -340,17 +436,17 @@ namespace CWH.Player.UI
                 StretchToParent((RectTransform)clockFallback.transform);
             }
 
-            GameObject clockLabel = CreateTextObject("ClockLabel", homeRect, "시계", 20f, FontStyles.Bold, TextAlignmentOptions.Center);
+            GameObject clockLabel = CreateTextObject("ClockLabel", homeRect, "시계", 18f, FontStyles.Normal, TextAlignmentOptions.Center);
             SetHomeAppRect((RectTransform)clockLabel.transform, 0, 2, true);
             clockLabel.GetComponent<TextMeshProUGUI>().color = new Color(0.12f, 0.12f, 0.15f, 1f);
 
-            GameObject hint = CreateTextObject("CloseHint", homeRect, "TAB  CLOSE", 18f, FontStyles.Normal, TextAlignmentOptions.Center);
+            GameObject hint = CreateTextObject("CloseHint", homeRect, "TAB 키를 누르면 닫힙니다", 16f, FontStyles.Normal, TextAlignmentOptions.Center);
             RectTransform hintRect = (RectTransform)hint.transform;
             hintRect.anchorMin = new Vector2(0.15f, 0.025f);
             hintRect.anchorMax = new Vector2(0.85f, 0.085f);
             hintRect.offsetMin = Vector2.zero;
             hintRect.offsetMax = Vector2.zero;
-            hint.GetComponent<TextMeshProUGUI>().color = new Color(0.35f, 0.35f, 0.4f, 1f);
+            hint.GetComponent<TextMeshProUGUI>().color = new Color(0.45f, 0.45f, 0.5f, 1f);
         }
 
         private void BuildYoutubeScreen()
@@ -420,10 +516,14 @@ namespace CWH.Player.UI
             headerRect.anchorMax = Vector2.one;
             headerRect.offsetMin = Vector2.zero;
             headerRect.offsetMax = Vector2.zero;
-            header.AddComponent<Image>().color = new Color(0.12f, 0.58f, 0.27f, 1f);
+            header.AddComponent<Image>().color = new Color(0.95f, 0.97f, 0.96f, 1f);
+            CreateDivider(headerRect, new Color(0.84f, 0.86f, 0.85f, 1f));
 
-            GameObject headerText = CreateTextObject("PhoneHeaderText", headerRect, "PHONE", 28f, FontStyles.Bold, TextAlignmentOptions.Center);
-            StretchToParent((RectTransform)headerText.transform);
+            GameObject headerText = CreateTextObject("PhoneHeaderText", headerRect, "전화", 23f, FontStyles.Normal, TextAlignmentOptions.Left);
+            RectTransform phoneHeaderTextRect = (RectTransform)headerText.transform;
+            StretchToParent(phoneHeaderTextRect);
+            phoneHeaderTextRect.offsetMin = new Vector2(20f, 0f);
+            headerText.GetComponent<TextMeshProUGUI>().color = new Color(0.12f, 0.14f, 0.13f, 1f);
 
             GameObject numberPanel = CreateRectObject("NumberPanel", dialerRect);
             RectTransform numberPanelRect = (RectTransform)numberPanel.transform;
@@ -431,20 +531,22 @@ namespace CWH.Player.UI
             numberPanelRect.anchorMax = new Vector2(0.92f, 0.81f);
             numberPanelRect.offsetMin = Vector2.zero;
             numberPanelRect.offsetMax = Vector2.zero;
-            numberPanel.AddComponent<Image>().color = new Color(0.12f, 0.14f, 0.13f, 1f);
+            numberPanel.AddComponent<Image>().color = new Color(0.95f, 0.97f, 0.96f, 1f);
 
-            GameObject numberText = CreateTextObject("DialedNumber", numberPanelRect, "---", 38f, FontStyles.Bold, TextAlignmentOptions.Center);
+            GameObject numberText = CreateTextObject("DialedNumber", numberPanelRect, string.Empty, 40f, FontStyles.Normal, TextAlignmentOptions.Center);
             StretchToParent((RectTransform)numberText.transform);
             _dialedNumberText = numberText.GetComponent<TextMeshProUGUI>();
+            _dialedNumberText.color = new Color(0.1f, 0.11f, 0.1f, 1f);
+            _dialedNumberText.characterSpacing = 10f;
 
-            GameObject statusText = CreateTextObject("DialerStatus", dialerRect, "ENTER 112", 17f, FontStyles.Bold, TextAlignmentOptions.Center);
+            GameObject statusText = CreateTextObject("DialerStatus", dialerRect, "112를 누르세요", 16f, FontStyles.Normal, TextAlignmentOptions.Center);
             RectTransform statusRect = (RectTransform)statusText.transform;
             statusRect.anchorMin = new Vector2(0.08f, 0.61f);
             statusRect.anchorMax = new Vector2(0.92f, 0.68f);
             statusRect.offsetMin = Vector2.zero;
             statusRect.offsetMax = Vector2.zero;
             _dialerStatusText = statusText.GetComponent<TextMeshProUGUI>();
-            _dialerStatusText.color = new Color(0.18f, 0.38f, 0.23f, 1f);
+            _dialerStatusText.color = new Color(0.45f, 0.48f, 0.46f, 1f);
 
             string[,] keys =
             {
@@ -485,12 +587,13 @@ namespace CWH.Player.UI
             RectTransform backRect = (RectTransform)backButtonObject.transform;
             SetCenteredRect(backRect, new Vector2(0f, -285f), new Vector2(180f, 46f));
             Image backImage = backButtonObject.AddComponent<Image>();
-            backImage.color = new Color(0.15f, 0.15f, 0.18f, 1f);
+            backImage.color = new Color(0.9f, 0.91f, 0.9f, 1f);
             Button backButton = backButtonObject.AddComponent<Button>();
             backButton.targetGraphic = backImage;
             backButton.onClick.AddListener(ShowHomeScreen);
-            GameObject backText = CreateTextObject("PhoneBackText", backRect, "BACK", 20f, FontStyles.Bold, TextAlignmentOptions.Center);
+            GameObject backText = CreateTextObject("PhoneBackText", backRect, "뒤로", 19f, FontStyles.Normal, TextAlignmentOptions.Center);
             StretchToParent((RectTransform)backText.transform);
+            backText.GetComponent<TextMeshProUGUI>().color = new Color(0.14f, 0.15f, 0.14f, 1f);
 
             _phoneDialerScreen.SetActive(false);
         }
@@ -505,8 +608,8 @@ namespace CWH.Player.UI
 
             Image image = buttonObject.AddComponent<Image>();
             image.color = key == "CLR" || key == "DEL"
-                ? new Color(0.32f, 0.35f, 0.34f, 1f)
-                : new Color(0.12f, 0.58f, 0.27f, 1f);
+                ? new Color(0.87f, 0.88f, 0.87f, 1f)
+                : new Color(0.93f, 0.94f, 0.93f, 1f);
             Button button = buttonObject.AddComponent<Button>();
             button.targetGraphic = image;
             if (key == "CLR")
@@ -522,8 +625,10 @@ namespace CWH.Player.UI
                 button.onClick.AddListener(() => AppendDialedDigit(key));
             }
 
-            GameObject textObject = CreateTextObject($"DialKeyText_{key}", buttonRect, key, key.Length > 1 ? 14f : 25f, FontStyles.Bold, TextAlignmentOptions.Center);
+            string label = key == "CLR" ? "지움" : key == "DEL" ? "삭제" : key;
+            GameObject textObject = CreateTextObject($"DialKeyText_{key}", buttonRect, label, key.Length > 1 ? 17f : 25f, FontStyles.Normal, TextAlignmentOptions.Center);
             StretchToParent((RectTransform)textObject.transform);
+            textObject.GetComponent<TextMeshProUGUI>().color = new Color(0.12f, 0.13f, 0.12f, 1f);
         }
 
         private void AppendDialedDigit(string digit)
@@ -564,7 +669,7 @@ namespace CWH.Player.UI
 
         private void RefreshDialedNumber()
         {
-            _dialedNumberText.SetText(string.IsNullOrEmpty(_dialedNumber) ? "---" : _dialedNumber);
+            _dialedNumberText.SetText(_dialedNumber);
         }
 
         private void RefreshEmergencyCallButton()
@@ -578,8 +683,8 @@ namespace CWH.Player.UI
 
             if (_dialerStatusText != null && !_policeCallPending)
             {
-                _dialerStatusText.SetText(responseActive ? "POLICE RESPONDING" : canCall ? "PRESS CALL" : "ENTER 112");
-                _dialerStatusText.color = new Color(0.18f, 0.38f, 0.23f, 1f);
+                _dialerStatusText.SetText(responseActive ? "경찰이 출동했습니다" : canCall ? "통화 버튼을 누르세요" : "112를 누르세요");
+                _dialerStatusText.color = new Color(0.45f, 0.48f, 0.46f, 1f);
             }
         }
 
@@ -624,7 +729,7 @@ namespace CWH.Player.UI
                 if (seconds != previousSeconds)
                 {
                     previousSeconds = seconds;
-                    _dialerStatusText.SetText("POLICE ARRIVING IN {0}", seconds);
+                    _dialerStatusText.SetText("{0}초 뒤 경찰 도착", seconds);
                     SetPoliceCountdown(seconds);
                 }
 
@@ -637,7 +742,7 @@ namespace CWH.Player.UI
                 yield break;
             }
 
-            _dialerStatusText.SetText("POLICE ARRIVED");
+            _dialerStatusText.SetText("경찰 도착");
             _dialerStatusText.color = new Color(0.05f, 0.55f, 0.2f, 1f);
             SetPoliceCountdown(0);
             yield return new WaitForSeconds(0.65f);
@@ -685,16 +790,19 @@ namespace CWH.Player.UI
             headerRect.anchorMax = Vector2.one;
             headerRect.offsetMin = Vector2.zero;
             headerRect.offsetMax = Vector2.zero;
-            header.AddComponent<Image>().color = new Color(0.05f, 0.56f, 0.35f, 1f);
+            header.AddComponent<Image>().color = new Color(0.035f, 0.055f, 0.075f, 1f);
+            CreateDivider(headerRect, new Color(0.11f, 0.16f, 0.2f, 1f));
 
             GameObject headerText = CreateTextObject(
                 "StocksHeaderText",
                 headerRect,
-                "STOCKS",
-                28f,
-                FontStyles.Bold,
-                TextAlignmentOptions.Center);
-            StretchToParent((RectTransform)headerText.transform);
+                "주식",
+                23f,
+                FontStyles.Normal,
+                TextAlignmentOptions.Left);
+            RectTransform stocksHeaderTextRect = (RectTransform)headerText.transform;
+            StretchToParent(stocksHeaderTextRect);
+            stocksHeaderTextRect.offsetMin = new Vector2(20f, 0f);
 
             GameObject healthCard = CreateRectObject("HealthCard", stocksRect);
             RectTransform healthCardRect = (RectTransform)healthCard.transform;
@@ -707,9 +815,9 @@ namespace CWH.Player.UI
             GameObject caption = CreateTextObject(
                 "HealthCaption",
                 healthCardRect,
-                "PLAYER HEALTH",
-                20f,
-                FontStyles.Bold,
+                "내 체력",
+                17f,
+                FontStyles.Normal,
                 TextAlignmentOptions.Center);
             RectTransform captionRect = (RectTransform)caption.transform;
             captionRect.anchorMin = new Vector2(0.08f, 0.7f);
@@ -721,7 +829,7 @@ namespace CWH.Player.UI
             GameObject healthTextObject = CreateTextObject(
                 "StocksHealthText",
                 healthCardRect,
-                "HP 100 / 100",
+                "100 / 100",
                 38f,
                 FontStyles.Bold,
                 TextAlignmentOptions.Center);
@@ -757,7 +865,7 @@ namespace CWH.Player.UI
             backRect.pivot = new Vector2(0.5f, 0.5f);
             backRect.sizeDelta = new Vector2(180f, 48f);
             Image backImage = backButtonObject.AddComponent<Image>();
-            backImage.color = new Color(0.04f, 0.34f, 0.23f, 1f);
+            backImage.color = new Color(0.1f, 0.14f, 0.18f, 1f);
             Button backButton = backButtonObject.AddComponent<Button>();
             backButton.targetGraphic = backImage;
             backButton.onClick.AddListener(ShowHomeScreen);
@@ -765,9 +873,9 @@ namespace CWH.Player.UI
             GameObject backText = CreateTextObject(
                 "StocksBackText",
                 backRect,
-                "BACK",
-                21f,
-                FontStyles.Bold,
+                "뒤로",
+                20f,
+                FontStyles.Normal,
                 TextAlignmentOptions.Center);
             StretchToParent((RectTransform)backText.transform);
 
@@ -809,7 +917,7 @@ namespace CWH.Player.UI
             _clockRemainingText.enableAutoSizing = true;
             _clockRemainingText.fontSizeMin = 15f;
             _clockRemainingText.fontSizeMax = 21f;
-            CreateClockLabel("ClockHint", clockRect, "24:00가 되면 퇴근합니다.\n그때까지 살아남으세요.", 17f, 0.16f, 0.29f, muted);
+            CreateClockLabel("ClockHint", clockRect, "24:00이 되면 퇴근합니다.\n그때까지 살아남으세요.", 17f, 0.16f, 0.29f, muted);
 
             GameObject backButtonObject = CreateRectObject("ClockBackButton", clockRect);
             RectTransform backRect = (RectTransform)backButtonObject.transform;
@@ -855,6 +963,7 @@ namespace CWH.Player.UI
             {
                 _lastClockText = clockText;
                 _clockTimeText.SetText(clockText);
+                if (_homeStatusText != null) _homeStatusText.SetText(clockText);
             }
 
             int remainingMinutes = Mathf.CeilToInt((1f - progress) * 240f);
@@ -880,16 +989,20 @@ namespace CWH.Player.UI
             headerRect.anchorMax = Vector2.one;
             headerRect.offsetMin = Vector2.zero;
             headerRect.offsetMax = Vector2.zero;
-            header.AddComponent<Image>().color = new Color(0.1f, 0.42f, 0.82f, 1f);
+            header.AddComponent<Image>().color = new Color(0.94f, 0.96f, 1f, 1f);
+            CreateDivider(headerRect, new Color(0.83f, 0.86f, 0.92f, 1f));
 
             GameObject headerText = CreateTextObject(
                 "MailHeaderText",
                 headerRect,
-                "퀘스트 메일",
-                28f,
-                FontStyles.Bold,
-                TextAlignmentOptions.Center);
-            StretchToParent((RectTransform)headerText.transform);
+                "받은 메일함",
+                23f,
+                FontStyles.Normal,
+                TextAlignmentOptions.Left);
+            RectTransform mailHeaderTextRect = (RectTransform)headerText.transform;
+            StretchToParent(mailHeaderTextRect);
+            mailHeaderTextRect.offsetMin = new Vector2(20f, 0f);
+            headerText.GetComponent<TextMeshProUGUI>().color = new Color(0.13f, 0.16f, 0.22f, 1f);
 
             GameObject viewportObject = CreateRectObject("QuestViewport", mailRect);
             RectTransform viewportRect = (RectTransform)viewportObject.transform;
@@ -897,7 +1010,7 @@ namespace CWH.Player.UI
             viewportRect.anchorMax = new Vector2(0.945f, 0.81f);
             viewportRect.offsetMin = Vector2.zero;
             viewportRect.offsetMax = Vector2.zero;
-            viewportObject.AddComponent<Image>().color = new Color(0.84f, 0.89f, 0.97f, 1f);
+            viewportObject.AddComponent<Image>().color = new Color(0.91f, 0.93f, 0.97f, 1f);
             viewportObject.AddComponent<RectMask2D>();
 
             GameObject contentObject = CreateRectObject("QuestContent", viewportRect);
@@ -927,7 +1040,7 @@ namespace CWH.Player.UI
             scrollRect.movementType = ScrollRect.MovementType.Clamped;
             scrollRect.scrollSensitivity = 28f;
 
-            PopulateQuestMail();
+            RefreshQuestMail();
 
             GameObject backButtonObject = CreateRectObject("MailBackButton", mailRect);
             RectTransform backRect = (RectTransform)backButtonObject.transform;
@@ -936,7 +1049,7 @@ namespace CWH.Player.UI
             backRect.pivot = new Vector2(0.5f, 0.5f);
             backRect.sizeDelta = new Vector2(180f, 48f);
             Image backImage = backButtonObject.AddComponent<Image>();
-            backImage.color = new Color(0.12f, 0.2f, 0.34f, 1f);
+            backImage.color = new Color(0.88f, 0.9f, 0.94f, 1f);
             Button backButton = backButtonObject.AddComponent<Button>();
             backButton.targetGraphic = backImage;
             backButton.onClick.AddListener(ShowHomeScreen);
@@ -945,15 +1058,17 @@ namespace CWH.Player.UI
                 "MailBackText",
                 backRect,
                 "뒤로",
-                21f,
-                FontStyles.Bold,
+                20f,
+                FontStyles.Normal,
                 TextAlignmentOptions.Center);
             StretchToParent((RectTransform)backText.transform);
+            backText.GetComponent<TextMeshProUGUI>().color = new Color(0.15f, 0.18f, 0.24f, 1f);
 
             _mailScreen.SetActive(false);
         }
 
-        private void PopulateQuestMail()
+        /// <summary>The jobs that stand all shift. Returns how many cards were added.</summary>
+        private int PopulateStandingQuests()
         {
             QuestDefinition[] quests = Resources.LoadAll<QuestDefinition>("Quests");
             System.Array.Sort(quests, static (left, right) =>
@@ -966,22 +1081,141 @@ namespace CWH.Player.UI
 
             if (quests.Length == 0)
             {
-                GameObject emptyText = CreateTextObject(
-                    "NoQuestText",
-                    _mailContent,
-                    "퀘스트 메일이 없습니다",
-                    22f,
-                    FontStyles.Bold,
-                    TextAlignmentOptions.Center);
-                emptyText.AddComponent<LayoutElement>().preferredHeight = 120f;
-                emptyText.GetComponent<TextMeshProUGUI>().color = new Color(0.28f, 0.35f, 0.46f, 1f);
-                return;
+                return 0;
             }
 
+            CreateMailSectionLabel("기본 업무");
             foreach (QuestDefinition quest in quests)
             {
                 CreateQuestMailCard(quest);
             }
+
+            return quests.Length;
+        }
+
+        /// <summary>Repaints the inbox: the manager's extra work on top, newest first, then the standing jobs.</summary>
+        private void RefreshQuestMail()
+        {
+            if (_mailContent == null)
+            {
+                return;
+            }
+
+            for (int index = _mailContent.childCount - 1; index >= 0; index--)
+            {
+                Transform child = _mailContent.GetChild(index);
+                child.SetParent(null, false);
+                Destroy(child.gameObject);
+            }
+
+            int cards = 0;
+            ShiftQuestBoard board = ShiftQuestBoard.Instance;
+            if (board != null && board.Tasks.Count > 0)
+            {
+                CreateMailSectionLabel("점장님 추가 업무");
+                for (int index = board.Tasks.Count - 1; index >= 0; index--)
+                {
+                    CreateTaskMailCard(board.Tasks[index]);
+                    cards++;
+                }
+            }
+
+            cards += PopulateStandingQuests();
+            if (cards > 0)
+            {
+                return;
+            }
+
+            GameObject emptyText = CreateTextObject(
+                "NoQuestText",
+                _mailContent,
+                "받은 메일이 없습니다",
+                20f,
+                FontStyles.Normal,
+                TextAlignmentOptions.Center);
+            emptyText.AddComponent<LayoutElement>().preferredHeight = 120f;
+            emptyText.GetComponent<TextMeshProUGUI>().color = new Color(0.28f, 0.35f, 0.46f, 1f);
+        }
+
+        private void CreateMailSectionLabel(string text)
+        {
+            GameObject label = CreateTextObject($"Section_{text}", _mailContent, text, 15f, FontStyles.Normal, TextAlignmentOptions.MidlineLeft);
+            label.AddComponent<LayoutElement>().preferredHeight = 26f;
+            label.GetComponent<TextMeshProUGUI>().color = new Color(0.42f, 0.48f, 0.58f, 1f);
+        }
+
+        private void CreateTaskMailCard(ShiftTask task)
+        {
+            GameObject card = CreateRectObject($"Task_{task.Title}", _mailContent);
+            card.AddComponent<Image>().color = task.IsDone ? new Color(0.93f, 0.97f, 0.93f, 1f) : Color.white;
+            card.AddComponent<LayoutElement>().preferredHeight = 186f;
+            RectTransform cardRect = (RectTransform)card.transform;
+
+            GameObject sender = CreateTextObject("TaskSender", cardRect, "점장님", 15f, FontStyles.Normal, TextAlignmentOptions.MidlineLeft);
+            SetCardRow((RectTransform)sender.transform, 0.79f, 0.95f);
+            sender.GetComponent<TextMeshProUGUI>().color = new Color(0.45f, 0.5f, 0.58f, 1f);
+
+            GameObject title = CreateTextObject("TaskTitle", cardRect, task.Title, 22f, FontStyles.Bold, TextAlignmentOptions.MidlineLeft);
+            SetCardRow((RectTransform)title.transform, 0.58f, 0.79f);
+            title.GetComponent<TextMeshProUGUI>().color = new Color(0.08f, 0.25f, 0.52f, 1f);
+
+            GameObject note = CreateTextObject("TaskNote", cardRect, task.Note, 16f, FontStyles.Normal, TextAlignmentOptions.TopLeft);
+            SetCardRow((RectTransform)note.transform, 0.29f, 0.57f);
+            note.GetComponent<TextMeshProUGUI>().color = new Color(0.18f, 0.2f, 0.24f, 1f);
+
+            string statusLine = task.IsDone
+                ? $"완료했습니다.  체력 +{task.HealthReward}"
+                : $"{task.ProgressText}    보상 체력 +{task.HealthReward}";
+            GameObject status = CreateTextObject("TaskStatus", cardRect, statusLine, 15f, FontStyles.Normal, TextAlignmentOptions.TopLeft);
+            SetCardRow((RectTransform)status.transform, 0.05f, 0.28f);
+            status.GetComponent<TextMeshProUGUI>().color = task.IsDone
+                ? new Color(0.12f, 0.45f, 0.24f, 1f)
+                : new Color(0.35f, 0.4f, 0.46f, 1f);
+        }
+
+        private static void SetCardRow(RectTransform rectTransform, float bottom, float top)
+        {
+            rectTransform.anchorMin = new Vector2(0.06f, bottom);
+            rectTransform.anchorMax = new Vector2(0.94f, top);
+            rectTransform.offsetMin = Vector2.zero;
+            rectTransform.offsetMax = Vector2.zero;
+        }
+
+        private void BuildMailToast(RectTransform canvasRect)
+        {
+            _mailToastPanel = CreateRectObject("MailToast", canvasRect);
+            RectTransform panelRect = (RectTransform)_mailToastPanel.transform;
+            panelRect.anchorMin = new Vector2(0.5f, 1f);
+            panelRect.anchorMax = new Vector2(0.5f, 1f);
+            panelRect.pivot = new Vector2(0.5f, 1f);
+            panelRect.anchoredPosition = new Vector2(0f, -112f);
+            panelRect.sizeDelta = new Vector2(520f, 56f);
+
+            Image panelImage = _mailToastPanel.AddComponent<Image>();
+            panelImage.color = new Color(0.03f, 0.04f, 0.05f, 0.86f);
+            panelImage.raycastTarget = false;
+
+            GameObject textObject = CreateTextObject("MailToastText", panelRect, string.Empty, 20f, FontStyles.Normal, TextAlignmentOptions.Center);
+            RectTransform textRect = (RectTransform)textObject.transform;
+            StretchToParent(textRect);
+            textRect.offsetMin = new Vector2(16f, 4f);
+            textRect.offsetMax = new Vector2(-16f, -4f);
+            _mailToastText = textObject.GetComponent<TextMeshProUGUI>();
+            _mailToastText.color = new Color(1f, 0.82f, 0.4f, 1f);
+
+            _mailToastPanel.SetActive(false);
+        }
+
+        private void ShowMailToast(string message)
+        {
+            if (_mailToastPanel == null)
+            {
+                return;
+            }
+
+            _mailToastText.SetText(message);
+            _mailToastPanel.SetActive(true);
+            _mailToastHideTime = Time.unscaledTime + 4.5f;
         }
 
         private void CreateQuestMailCard(QuestDefinition quest)
@@ -1020,8 +1254,8 @@ namespace CWH.Player.UI
             description.GetComponent<TextMeshProUGUI>().color = new Color(0.18f, 0.2f, 0.24f, 1f);
 
             string objectiveText = quest.TargetAmount > 1
-                ? $"목표: {quest.Objective}  x{quest.TargetAmount}"
-                : $"목표: {quest.Objective}";
+                ? $"할 일: {quest.Objective}  {quest.TargetAmount}개"
+                : $"할 일: {quest.Objective}";
             if (!string.IsNullOrWhiteSpace(quest.Reward))
             {
                 objectiveText += $"\n보상: {quest.Reward}";
@@ -1032,14 +1266,14 @@ namespace CWH.Player.UI
                 cardRect,
                 objectiveText,
                 15f,
-                FontStyles.Bold,
+                FontStyles.Normal,
                 TextAlignmentOptions.TopLeft);
             RectTransform objectiveRect = (RectTransform)objective.transform;
             objectiveRect.anchorMin = new Vector2(0.06f, 0.05f);
             objectiveRect.anchorMax = new Vector2(0.94f, 0.29f);
             objectiveRect.offsetMin = Vector2.zero;
             objectiveRect.offsetMax = Vector2.zero;
-            objective.GetComponent<TextMeshProUGUI>().color = new Color(0.08f, 0.48f, 0.3f, 1f);
+            objective.GetComponent<TextMeshProUGUI>().color = new Color(0.22f, 0.4f, 0.29f, 1f);
         }
 
         private void BuildPoliceCountdownDisplay(RectTransform canvasRect)
@@ -1059,9 +1293,9 @@ namespace CWH.Player.UI
             GameObject textObject = CreateTextObject(
                 "PoliceCountdownText",
                 panelRect,
-                "POLICE ARRIVING IN 5",
-                28f,
-                FontStyles.Bold,
+                "5초 뒤 경찰 도착",
+                26f,
+                FontStyles.Normal,
                 TextAlignmentOptions.Center);
             RectTransform textRect = (RectTransform)textObject.transform;
             StretchToParent(textRect);
@@ -1090,12 +1324,12 @@ namespace CWH.Player.UI
 
             if (seconds <= 0)
             {
-                _policeCountdownText.SetText("POLICE ARRIVED");
+                _policeCountdownText.SetText("경찰 도착");
                 _policeCountdownText.color = new Color(0.35f, 1f, 0.5f, 1f);
                 return;
             }
 
-            _policeCountdownText.SetText("POLICE ARRIVING IN {0}", seconds);
+            _policeCountdownText.SetText("{0}초 뒤 경찰 도착", seconds);
             _policeCountdownText.color = new Color(0.65f, 0.9f, 1f, 1f);
         }
 
@@ -1108,7 +1342,7 @@ namespace CWH.Player.UI
 
             int displayedCurrent = Mathf.CeilToInt(currentHealth);
             int displayedMax = Mathf.CeilToInt(maxHealth);
-            _healthText.SetText("HP {0} / {1}", displayedCurrent, displayedMax);
+            _healthText.SetText("{0} / {1}", displayedCurrent, displayedMax);
 
             float healthRatio = maxHealth > 0f ? currentHealth / maxHealth : 0f;
             Color healthColor = Color.Lerp(
@@ -1171,6 +1405,7 @@ namespace CWH.Player.UI
             }
 
             _phoneOverlay.SetActive(isOpen);
+            PhoneActionPerformed?.Invoke(isOpen ? "PhoneOpened" : "PhoneClosed");
         }
 
         private void ShowYoutubeScreen()
@@ -1550,6 +1785,21 @@ namespace CWH.Player.UI
 
             _runtimeUiFont = TMP_Settings.defaultFontAsset;
             return _runtimeUiFont;
+        }
+
+        /// <summary>A one-pixel rule under a header, the way a real app separates its title bar.</summary>
+        private static void CreateDivider(RectTransform parent, Color color)
+        {
+            GameObject line = CreateRectObject("Divider", parent);
+            RectTransform lineRect = (RectTransform)line.transform;
+            lineRect.anchorMin = Vector2.zero;
+            lineRect.anchorMax = new Vector2(1f, 0f);
+            lineRect.pivot = new Vector2(0.5f, 0f);
+            lineRect.anchoredPosition = Vector2.zero;
+            lineRect.sizeDelta = new Vector2(0f, 1.5f);
+            Image image = line.AddComponent<Image>();
+            image.color = color;
+            image.raycastTarget = false;
         }
 
         private static void StretchToParent(RectTransform rectTransform)

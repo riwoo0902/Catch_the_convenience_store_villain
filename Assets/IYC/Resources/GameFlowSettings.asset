@@ -17,3 +17,4 @@ MonoBehaviour:
   _charactersPerSecond: 28
   _checkoutDurationSeconds: 7
   _clockTexture: {fileID: 2800000, guid: d6cf97dbcf0555a498b9100b7df340e0, type: 3}
+  _openingApplication: {fileID: 2800000, guid: 171dccac71a04d43873f646c98140c3b, type: 3}

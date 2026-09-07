@@ -147,7 +147,7 @@ namespace CWH.Villains
                 float remaining = Random.Range(_minimumArrivalDelay, Mathf.Max(_minimumArrivalDelay, _maximumArrivalDelay));
                 while (remaining > 0f && enabled && _playerHealth != null && !_playerHealth.IsDead)
                 {
-                    if (GameLoopController.AllowsGameplay)
+                    if (GameLoopController.AllowsRandomSpawns)
                     {
                         remaining -= Time.deltaTime;
                     }
@@ -155,14 +155,25 @@ namespace CWH.Villains
                     yield return null;
                 }
 
-                if (enabled && GameLoopController.AllowsGameplay && _player != null && _playerHealth != null && !_playerHealth.IsDead)
+                if (enabled && GameLoopController.AllowsRandomSpawns && _player != null && _playerHealth != null && !_playerHealth.IsDead)
                 {
-                    SpawnVillain();
+                    SpawnVillain(false);
                 }
             }
         }
 
-        private void SpawnVillain()
+        public GameObject TutorialVillain { get; private set; }
+
+        public bool TrySpawnTutorialVillain()
+        {
+            if (TutorialVillain != null) return true;
+            if (!enabled || _settings == null || _settings.VillainVisualPrefab == null || _player == null)
+                return false;
+            SpawnVillain(true);
+            return TutorialVillain != null;
+        }
+
+        private void SpawnVillain(bool tutorial)
         {
             if (!GameLoopController.AllowsGameplay || _playerHealth == null || _playerHealth.IsDead)
             {
@@ -170,6 +181,11 @@ namespace CWH.Villains
             }
 
             bool useCustomSpawnPoint = TryGetRandomPoint(_spawnPoints, out Vector3 spawnPosition);
+            if (tutorial)
+            {
+                useCustomSpawnPoint = true;
+                spawnPosition = ResolveSpawnHeight(_insideDoorPosition);
+            }
             if (useCustomSpawnPoint)
             {
                 spawnPosition = ResolveSpawnHeight(spawnPosition);
@@ -188,7 +204,7 @@ namespace CWH.Villains
                 : Vector3.forward;
 
             float mischiefDelay = Random.Range(_settings.MinimumMischiefDelay, _settings.MaximumMischiefDelay);
-            if (ShouldSpawnChefVillain())
+            if (!tutorial && ShouldSpawnChefVillain())
             {
                 Debug.Log($"Spawning Chef Spatula Villain at {spawnPosition}");
                 SpawnChefVillain(
@@ -199,7 +215,7 @@ namespace CWH.Villains
                 return;
             }
 
-            if (ShouldSpawnProductDisturber())
+            if (!tutorial && ShouldSpawnProductDisturber())
             {
                 Debug.Log($"Spawning Product Disturber Villain at {spawnPosition}");
                 SpawnProductDisturber(
@@ -215,6 +231,7 @@ namespace CWH.Villains
                 useCustomSpawnPoint ? spawnPosition : _outsideDoorPosition,
                 Quaternion.LookRotation(entryDirection, Vector3.up));
             villainObject.name = "Brick Villain";
+            if (tutorial) TutorialVillain = villainObject;
             Debug.Log($"Spawning Brick Villain at {villainObject.transform.position}");
 
             global::Villains.BrickVillain fsmVillain = villainObject.GetComponent<global::Villains.BrickVillain>();

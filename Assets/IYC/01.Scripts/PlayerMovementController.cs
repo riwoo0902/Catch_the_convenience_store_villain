@@ -26,6 +26,8 @@ namespace Branches.CWH.Scripts.Player
         {
             _motor = GetComponent<CharacterControllerMotor>();
             _inputReader = GetComponent<IMovementInputReader>();
+            if (!TryGetComponent<global::CWH.Player.PlayerFallRecovery>(out _))
+                gameObject.AddComponent<global::CWH.Player.PlayerFallRecovery>();
         }
 
         private void Start()
@@ -49,5 +51,7 @@ namespace Branches.CWH.Scripts.Player
             var sample = _inputReader.Sample();
             _stateMachine.Tick(Time.fixedDeltaTime, sample);
         }
+
+        public void ResetVerticalMotion() => _stateMachine?.ResetVerticalMotion();
     }
 }

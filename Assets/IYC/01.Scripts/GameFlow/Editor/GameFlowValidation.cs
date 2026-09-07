@@ -174,8 +174,18 @@ namespace CWH.GameFlow.Editor
             yield return Wait(0.75f);
             Require(ReadFloat(loop, "ElapsedSeconds") < 0.01f, "Story does not consume work time");
             Require(!ReadBool(loop, "IsPlaying"), "Player is not in gameplay during intro");
-            yield return Capture("02-intro-typewriter");
             Component view = RequireView();
+            GameObject applicationPage = (GameObject)Read(view, "_applicationPage");
+            Require(applicationPage.activeInHierarchy && applicationPage.GetComponentInChildren<RawImage>().texture != null,
+                "First story page displays the supplied application image");
+            Require(!((TMP_Text)Read(view, "_body")).gameObject.activeInHierarchy, "Application image replaces the first text page");
+            yield return Capture("02-employment-application");
+            Call(view, "AdvanceStory");
+            Require(!applicationPage.activeSelf && Convert.ToInt32(Read(view, "_lineIndex")) == 1,
+                "One click continues from the image to the second story sentence");
+            Require(((TMP_Text)Read(view, "_body")).text == GameLoopController.Instance.Settings.Opening[1],
+                "Remaining opening story text is preserved");
+            yield return Capture("02-intro-typewriter");
             TMP_Text narrative = (TMP_Text)Read(view, "_body");
             // A slow graphics frame may have completed the first line before capture.
             // In that case the next click starts the next actual narrative line.
@@ -199,6 +209,7 @@ namespace CWH.GameFlow.Editor
 
             Component hud = Find("CWH.Player.UI.PlayerHUDController");
             Require(hud != null, "Gameplay HUD installs after title scene transition");
+            yield return ExerciseTutorial(hud);
             Call(hud, "SetPhoneOpen", true);
             Click(hud, "ClockButton");
             yield return Wait(0.2f);
@@ -215,6 +226,9 @@ namespace CWH.GameFlow.Editor
             Component spawner = Find("CWH.Villains.ConvenienceStoreVillainSpawner");
             if (spawner is MonoBehaviour spawnBehaviour)
                 spawnBehaviour.StopAllCoroutines();
+            // The manager's errands pay out health, which would move the numbers this section measures.
+            if (Find("CWH.Quests.ShiftQuestBoard") is MonoBehaviour questBoard)
+                questBoard.enabled = false;
             Type policeType = TypeOf("CWH.Villains.PoliceResponseController");
             Require(!(bool)CallStatic(TypeOf("CWH.Villains.RuntimePoliceOfficer"), "HasActiveVillains"), "False-report fixture has no active villain");
             Call(hud, "ShowHomeScreen");
@@ -250,6 +264,9 @@ namespace CWH.GameFlow.Editor
             GameObject player = GameObject.Find("Player");
             Require(player != null, "Gameplay player exists");
             officer.transform.position = player.transform.position + Vector3.right * 0.4f;
+            yield return Until(() => ReadBool(officer, "_isAttacking"), 2f, "False report begins the police melee attack");
+            Require(ReadFloat(health, "CurrentHealth") == beforePenalty, "False-report damage waits for the attack hit frame");
+            Require(Convert.ToInt32(Read(officer, "_currentAnimationHash")) == Animator.StringToHash("Standing Melee Attack Downward"), "False report uses the villain-suppression attack animation");
             yield return Until(() => ReadFloat(health, "CurrentHealth") < beforePenalty, 4f, "Police false-report visit applies its penalty");
             Require(Math.Abs(beforePenalty - ReadFloat(health, "CurrentHealth") - 20f) < 0.01f, "False report costs exactly 20 HP even during hit invulnerability");
             float afterPenalty = ReadFloat(health, "CurrentHealth");
@@ -257,6 +274,23 @@ namespace CWH.GameFlow.Editor
             Require(Math.Abs(ReadFloat(health, "CurrentHealth") - afterPenalty) < 0.01f, "False-report penalty is applied once");
             ((Behaviour)health).enabled = true;
             Call(hud, "SetPhoneOpen", false);
+
+            // Restore only height at the fallen location, without respawning at the origin.
+            Component recovery = Find("CWH.Player.PlayerFallRecovery");
+            Require(recovery != null, "Fall recovery is automatically installed");
+            CharacterController character = player.GetComponent<CharacterController>();
+            Vector3 beforeFall = player.transform.position;
+            Vector3 fallen = new(beforeFall.x + 0.4f, -20f, beforeFall.z + 0.3f);
+            character.enabled = false;
+            player.transform.position = fallen;
+            character.enabled = true;
+            Call(recovery, "LateUpdate");
+            Require(Mathf.Abs(player.transform.position.x - fallen.x) < 0.0001f
+                && Mathf.Abs(player.transform.position.z - fallen.z) < 0.0001f
+                && player.transform.position.y >= 2f, "Falling below the floor preserves XZ and raises only Y");
+            object movementSnapshot = Call(Read(movement, "StateSource"), "GetSnapshot");
+            Vector3 recoveredVelocity = (Vector3)Read(movementSnapshot, "Velocity");
+            Require(Mathf.Abs(recoveredVelocity.y) < 0.0001f, "Fall recovery clears downward velocity");
 
             Call(health, "TakeDamage", 10000);
             yield return Until(() => Phase() == "DeathStory", 3f, "Zero health opens death story");
@@ -272,6 +306,7 @@ namespace CWH.GameFlow.Editor
             restart.onClick.Invoke();
             yield return Until(() => Phase() == "Playing" && ReadFloat(Loop(), "ElapsedSeconds") < 5f, 30f, "Restart reloads the shift and skips intro");
             Require(ReadString(Loop(), "ClockText") == "20:00", "Restart resets the clock to 20:00");
+            Require(!GameLoopController.Instance.TutorialActive, "Restart skips the hands-on tutorial");
             health = Find("CWH.Player.Health.PlayerHealth");
             Require(Math.Abs(ReadFloat(health, "CurrentHealth") - ReadFloat(health, "MaxHealth")) < 0.01f, "Restart restores full health");
 
@@ -295,6 +330,126 @@ namespace CWH.GameFlow.Editor
             Require(Math.Abs(Time.timeScale - 1f) < 0.01f, "Returning to title restores normal time scale");
             Require(Find("CWH.Player.UI.PlayerHUDController") == null, "Gameplay HUD is removed when returning to title");
             yield return Capture("11-returned-title");
+
+            GameLoopController.StartNewGame();
+            yield return Until(() => Phase() == "Intro", 30f, "New game restores the story after returning to title");
+            yield return AdvanceNarrative("Intro", "Playing");
+            Require(GameLoopController.Instance.TutorialActive, "New game restores the tutorial");
+            CWH.Player.Health.PlayerHealth.GetOrCreate().TakeDamage(10000);
+            yield return Until(() => Phase() == "DeathStory", 3f, "Death can interrupt the hands-on tutorial");
+            Require(!GameLoopController.Instance.TutorialActive, "Death dismisses the tutorial objective");
+            yield return AdvanceNarrative("DeathStory", "Results");
+            FindResultButton("Restart").onClick.Invoke();
+            yield return Until(() => Phase() == "Playing", 30f, "Restart after tutorial death resumes the shift");
+            Require(!GameLoopController.Instance.TutorialActive, "Restart skips even an unfinished tutorial");
+
+            GameLoopController.StartNewGame();
+            yield return Until(() => Phase() == "Intro", 30f, "Midnight tutorial fixture opens");
+            yield return AdvanceNarrative("Intro", "Playing");
+            Require(GameLoopController.Instance.TutorialActive, "Midnight fixture starts inside tutorial");
+            SetElapsed(Loop(), duration);
+            yield return Until(() => Phase() == "Checkout", 4f, "Midnight interrupts even an unfinished tutorial");
+            Require(!GameLoopController.Instance.TutorialActive, "Midnight dismisses tutorial guidance");
+            yield return Capture("tutorial-06-midnight-interruption");
+        }
+
+        private static IEnumerator ExerciseTutorial(Component hud)
+        {
+            var loop = GameLoopController.Instance;
+            var tutorial = Object.FindFirstObjectByType<ShiftTutorial>();
+            Require(tutorial != null && loop.TutorialActive && tutorial.Step == TutorialStep.OpenPhone,
+                "Story starts with only the open-phone instruction");
+            Require(!GameLoopController.AllowsRandomSpawns, "Random arrivals are held during the tutorial");
+            float started = loop.ElapsedSeconds;
+            yield return Capture("tutorial-01-open-phone");
+            Call(hud, "SetPhoneOpen", true);
+            Require(tutorial.Step == TutorialStep.OpenClock, "Opening the phone advances exactly one action");
+            Transform highlight = FindButton(hud, "ClockButton").transform.Find("Tutorial Button Highlight");
+            Require(highlight != null && highlight.gameObject.activeInHierarchy
+                && highlight.GetComponentsInChildren<Image>().All(border => !border.raycastTarget),
+                "Requested app has a visible non-blocking highlight");
+            yield return Capture("tutorial-02-highlight-clock");
+            Click(hud, "MailButton");
+            Require(tutorial.Step == TutorialStep.OpenClock, "Wrong app does not advance the requested action");
+            Click(hud, "MailBackButton");
+            Click(hud, "ClockButton");
+            Require(tutorial.Step == TutorialStep.ReadClock, "Clock click opens a separate reading step");
+            yield return Wait(4f);
+            Require(tutorial.Step == TutorialStep.ReadClock, "Reading never completes automatically after a timer");
+            Call(hud, "SetPhoneOpen", false);
+            tutorial.ConfirmCurrentStep();
+            Require(tutorial.Step == TutorialStep.ReadClock, "Hidden app cannot be confirmed");
+            Call(hud, "SetPhoneOpen", true);
+            Click(hud, "ClockButton");
+            Click(RequireView(), "Tutorial Confirm");
+            Require(tutorial.Step == TutorialStep.BackClock, "Confirming clock information requests only the back button");
+            yield return Capture("tutorial-03-highlight-back");
+            Call(hud, "SetPhoneOpen", false);
+            Call(hud, "SetPhoneOpen", true);
+            Click(hud, "MailButton");
+            Click(hud, "MailBackButton");
+            Require(tutorial.Step == TutorialStep.BackClock, "Unrelated back button cannot complete the current back step");
+            Click(hud, "ClockButton");
+            Click(hud, "ClockBackButton");
+            Require(tutorial.Step == TutorialStep.OpenStocks, "Correct back button unlocks the next app lesson");
+            Click(hud, "StocksButton");
+            Require(tutorial.Step == TutorialStep.ReadStocks, "Health app requires explicit reading confirmation");
+            Click(RequireView(), "Tutorial Confirm");
+            Click(hud, "StocksBackButton");
+
+            // A non-initialized WebView exercises the button without contacting an external service.
+            GameObject webFixture = new("Validation WebView (no network)");
+            webFixture.transform.SetParent(hud.transform, false);
+            Component webView = webFixture.AddComponent(TypeOf("Gree.UnityWebView.WebViewObject"));
+            hud.GetType().GetField("_youtubeWebView", InstanceFlags).SetValue(hud, webView);
+            hud.GetType().GetField("_youtubePageRequested", InstanceFlags).SetValue(hud, true);
+            Click(hud, "YoutubeButton");
+            Require(tutorial.Step == TutorialStep.ReadYoutube, "YouTube opens as its own action");
+            yield return Wait(5.2f);
+            Require(tutorial.Step == TutorialStep.ReadYoutube, "YouTube also waits for user confirmation, not five seconds");
+            Click(RequireView(), "Tutorial Confirm");
+            Click(hud, "BackButton");
+            Click(hud, "MailButton");
+            Require(tutorial.Step == TutorialStep.ReadMail, "Mail is a separate reading step");
+            Click(RequireView(), "Tutorial Confirm");
+            Click(hud, "MailBackButton");
+            Require(tutorial.Step == TutorialStep.ClosePhone, "App lessons end with a separate close-phone instruction");
+            Require(!(bool)CallStatic(TypeOf("CWH.Villains.RuntimePoliceOfficer"), "HasActiveVillains"), "No villain appears during app instruction");
+            Call(hud, "SetPhoneOpen", false);
+            yield return Until(() => tutorial.Step == TutorialStep.OpenReportPhone, 5f, "Closing the phone introduces one villain");
+            var spawner = Object.FindFirstObjectByType<CWH.Villains.ConvenienceStoreVillainSpawner>();
+            GameObject firstVillain = spawner.TutorialVillain;
+            Require(firstVillain != null, "Tutorial has a real villain");
+            spawner.TrySpawnTutorialVillain();
+            Require(spawner.TutorialVillain == firstVillain, "Tutorial never duplicates its villain");
+            Require(loop.ElapsedSeconds > started + 8f, "Work time continues throughout individual tutorial actions");
+            Call(hud, "SetPhoneOpen", true);
+            Require(tutorial.Step == TutorialStep.OpenDialer, "Reporting starts with a separate phone-app instruction");
+            Click(hud, "PhoneButton");
+            Require(tutorial.Step == TutorialStep.DialFirstOne, "Phone app first requests only digit one");
+            Click(hud, "DialKey_2");
+            Require(tutorial.Step == TutorialStep.DialFirstOne, "Wrong digit does not advance the lesson");
+            highlight = FindButton(hud, "DialKey_CLR").transform.Find("Tutorial Button Highlight");
+            Require(highlight != null && highlight.gameObject.activeInHierarchy, "Wrong number highlights clear for recovery");
+            Click(hud, "DialKey_CLR");
+            Click(hud, "DialKey_1");
+            Require(tutorial.Step == TutorialStep.DialSecondOne, "First one requests the second one separately");
+            Click(hud, "DialKey_1");
+            Require(tutorial.Step == TutorialStep.DialTwo, "Second one requests digit two separately");
+            yield return Capture("tutorial-04-highlight-digit-two");
+            Click(hud, "DialKey_2");
+            Require(tutorial.Step == TutorialStep.Call, "Completed 112 requests the call button separately");
+            Click(hud, "EmergencyCallButton");
+            Require(tutorial.Step == TutorialStep.Police && !CWH.Villains.PoliceResponseController.LastReportWasFalse,
+                "Actual call advances to evading until police finish");
+            yield return Until(() => tutorial.Step == TutorialStep.Complete, 40f, "Police resolves the single tutorial villain");
+            yield return Wait(4.2f);
+            Require(loop.TutorialActive, "Completion also waits for explicit confirmation");
+            yield return Capture("tutorial-05-complete");
+            float beforeCompletion = loop.ElapsedSeconds;
+            tutorial.ConfirmCurrentStep();
+            Require(!loop.TutorialActive && loop.ElapsedSeconds >= beforeCompletion && GameLoopController.AllowsRandomSpawns,
+                "Confirmation ends the tutorial without resetting time and releases random arrivals");
         }
 
         private static IEnumerator AdvanceNarrative(string from, string to)
@@ -354,8 +509,13 @@ namespace CWH.GameFlow.Editor
                 {
                     canvas.renderMode = RenderMode.ScreenSpaceCamera;
                     canvas.worldCamera = camera;
-                    canvas.planeDistance = camera.nearClipPlane + 0.05f;
+                    // The gameplay camera's 0.01 near plane is too close for SDF text
+                    // when temporarily converting overlay UI for an offscreen capture.
+                    canvas.planeDistance = Mathf.Max(1f, camera.nearClipPlane + 0.1f);
                 }
+                Canvas.ForceUpdateCanvases();
+                foreach (TMP_Text text in Object.FindObjectsByType<TMP_Text>(FindObjectsSortMode.None))
+                    text.ForceMeshUpdate();
                 Canvas.ForceUpdateCanvases();
                 RenderPipeline.SubmitRenderRequest(camera, new UniversalRenderPipeline.SingleCameraRequest { destination = texture });
                 RenderTexture.active = texture;

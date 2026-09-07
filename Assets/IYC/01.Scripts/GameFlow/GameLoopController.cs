@@ -30,10 +30,13 @@ namespace CWH.GameFlow
         private bool _ownsFallbackSettings;
         private int _arrestCount;
         private bool _won;
+        private ShiftTutorial _tutorial;
 
         public GameFlowSettings Settings { get; private set; }
         public ShiftPhase Phase { get; private set; } = ShiftPhase.Intro;
         public bool IsPlaying => Phase == ShiftPhase.Playing;
+        public bool TutorialActive => _tutorial != null && _tutorial.IsActive;
+        public static bool AllowsRandomSpawns => AllowsGameplay && (Instance == null || !Instance.TutorialActive);
         public float ElapsedSeconds => _elapsedSeconds;
         public int ArrestCount => _arrestCount;
         public float Progress01 => Settings != null ? Mathf.Clamp01(_elapsedSeconds / Settings.ShiftDurationSeconds) : 0f;
@@ -107,7 +110,7 @@ namespace CWH.GameFlow
             bool skip = _skipNextIntro;
             _skipNextIntro = false;
             if (skip) BeginShift();
-            else _view.ShowStory("근무 전 안내", Settings.Opening, BeginShift);
+            else _view.ShowStory("첫 출근", Settings.Opening, BeginTutorial, true);
         }
 
         private void Update()
@@ -115,6 +118,13 @@ namespace CWH.GameFlow
             if (!IsPlaying) return;
             _elapsedSeconds = Mathf.Min(_elapsedSeconds + Time.deltaTime, Settings.ShiftDurationSeconds);
             if (_elapsedSeconds >= Settings.ShiftDurationSeconds) BeginCheckout();
+        }
+
+        private void BeginTutorial()
+        {
+            BeginShift();
+            _tutorial = gameObject.AddComponent<ShiftTutorial>();
+            _tutorial.Begin(this, _view);
         }
 
         private void BeginShift()
@@ -155,6 +165,7 @@ namespace CWH.GameFlow
 
         private void FreezeGameplay()
         {
+            _tutorial?.Cancel();
             FindFirstObjectByType<PlayerHUDController>()?.SetGameplayEnabled(false);
             PoliceResponseController.CancelEmergencyCall();
             Time.timeScale = 0f;

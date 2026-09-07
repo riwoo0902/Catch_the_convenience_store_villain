@@ -40,10 +40,14 @@ namespace CWH.Player.Interaction
 
         public static int UnorganizedProductCount { get; private set; }
 
+        /// <summary>How many products have been put back this shift. Quest progress counts from this.</summary>
+        public static int RestoredProductCount { get; private set; }
+
         [RuntimeInitializeOnLoadMethod(RuntimeInitializeLoadType.BeforeSceneLoad)]
         private static void ResetUnorganizedProductCount()
         {
             UnorganizedProductCount = 0;
+            RestoredProductCount = 0;
         }
 
         [RuntimeInitializeOnLoadMethod(RuntimeInitializeLoadType.AfterSceneLoad)]
@@ -120,6 +124,7 @@ namespace CWH.Player.Interaction
         private void Awake()
         {
             UnorganizedProductCount = 0;
+            RestoredProductCount = 0;
             _viewCamera = GetComponent<Camera>();
             CaptureInitialProductPoses();
             BrickProjectile.HitTarget += HandleBrickHit;
@@ -297,6 +302,10 @@ namespace CWH.Player.Interaction
             if (changed)
             {
                 UnorganizedProductCount = _unorganizedProducts.Count;
+                if (!isUnorganized)
+                {
+                    RestoredProductCount++;
+                }
             }
         }
 

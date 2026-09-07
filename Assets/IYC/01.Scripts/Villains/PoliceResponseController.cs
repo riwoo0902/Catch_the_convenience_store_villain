@@ -541,6 +541,12 @@ namespace CWH.Villains
 
         private void UpdateFalseReportVisit()
         {
+            if (_isAttacking)
+            {
+                UpdateAttack();
+                return;
+            }
+
             if (!_falseReportPenaltyApplied)
             {
                 if (_falseReportPlayer == null)
@@ -560,11 +566,7 @@ namespace CWH.Villains
 
                 StopNavigation();
                 FaceDirection(toPlayer);
-                _target = null;
-                _falseReportPenaltyApplied = true;
-                _falseReportPenaltyTime = Time.time;
-                PlayerHealth.GetOrCreate()?.ApplyFalseReportPenalty();
-                AnimateIdle();
+                BeginAttack();
                 return;
             }
 
@@ -648,7 +650,19 @@ namespace CWH.Villains
             if (_hasPendingHit && Time.time >= _pendingHitTime)
             {
                 _hasPendingHit = false;
-                SuppressTarget(_target);
+                if (_isFalseReportVisit)
+                {
+                    if (!_falseReportPenaltyApplied)
+                    {
+                        _falseReportPenaltyApplied = true;
+                        _falseReportPenaltyTime = Time.time;
+                        PlayerHealth.GetOrCreate()?.ApplyFalseReportPenalty();
+                    }
+                }
+                else
+                {
+                    SuppressTarget(_target);
+                }
                 _target = null;
             }
 
@@ -999,6 +1013,7 @@ namespace CWH.Villains
 
         private void PlayAnimation(string stateName, bool force = false)
         {
+            if (_animator == null) return;
             int stateHash = Animator.StringToHash(stateName);
             if (!force && _currentAnimationHash == stateHash)
             {

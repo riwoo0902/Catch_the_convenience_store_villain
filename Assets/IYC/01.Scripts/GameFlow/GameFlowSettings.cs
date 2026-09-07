@@ -11,35 +11,34 @@ namespace CWH.GameFlow
         [SerializeField, Min(1f)] private float _charactersPerSecond = 28f;
         [SerializeField, Min(2f)] private float _checkoutDurationSeconds = 7f;
         [SerializeField] private Texture2D _clockTexture;
+        [SerializeField] private Texture2D _openingApplication;
         private Sprite _clockIcon;
 
         [Header("Opening — each entry is one click")]
         [SerializeField, TextArea(2, 6)] private string[] _opening =
         {
-            "야간 편의점 알바 구함.\n업무: 계산, 상품 정리, 그리고 생존.\n마지막 항목은 면접 때 못 들었다.",
-            "봉투값 100원에 인류애가 무너지고,\n젓가락 하나에 진열대가 뒤집힌다.\n손님은 왕이라더니 여기는 폭군만 온다.",
-            "벽돌을 던져도 서비스. 물건을 엎어도 서비스.\n죄송합니다를 무한 리필로 처먹는 진상들.\n시급에는 샌드백 이용료가 없는데?",
-            "사장님: 진상 오면 112 눌러. 경찰 5초면 와.\n나: 그 5초 동안은요?\n사장님: 달려.",
-            "근무는 20:00부터 24:00까지.\n현실 시간 10분만 살아남으면 바로 퇴근이다.\nTAB으로 휴대폰을 열고 시계 앱에서 시간을 확인하자.",
-            "엎어진 물건을 바라보고 E로 정리하자.\n어질러진 물건이 남아 있으면 체력이 줄어든다.\n휴대폰으로 유튜브를 보면 체력이 회복된다.",
-            "빌런이 오면 달리면서 전화 앱을 켜자.\n1 → 1 → 2 → 통화. 누른 순간부터 5초를 버티자.\n아무도 없는데 신고하면? 경찰 방문 + 체력 20 차감.",
-            "목표: 친절왕 말고 생존왕.\n진상에게 오늘의 내 인생까지 반품해 줄 순 없다.\n24:00. 그때는 누가 깽판을 치든 퇴근이다."
+            "야간 편의점 알바 구함.\n시급은 최저임금. 야간수당은 5인 미만 사업장이라 없다.\n업무: 계산, 상품 정리, 그리고 참기.",
+            "면접은 십 분 만에 끝났다.\n사장님은 천장의 CCTV를 가리키며 말했다.\n\"무슨 일 생기면 저게 다 봐 줄 거야.\"",
+            "봉투값 백 원에 욕이 날아오고,\n계산이 느리다며 진열대가 넘어간다.\n손님은 왕이라는데, 왕은 왜 밤에만 올까.",
+            "참으면 넘어가고, 대들면 내 잘못이 된다.\n그래서 다들 참는다. 나도 참았다.\n참는 게 업무인 줄 알았다.",
+            "근로계약서엔 없지만 배운 게 하나 있다.\n폭언과 폭행은 서비스가 아니라 범죄다.\n112는 손님보다 먼저 부를 수 있다.",
+            "오늘 목표는 친절왕이 아니라 무사 퇴근.\n24:00까지 버틴다.\n내 하루까지 반품해 줄 순 없으니까."
         };
 
         [Header("Game over")]
         [SerializeField, TextArea(2, 6)] private string[] _death =
         {
-            "영수증도 없이 상식을 환불하러 온 인간들.\n오늘은 내 체력이 먼저 품절됐다.",
-            "진열대는 넘어지고, 벽돌은 날아오고,\n진상은 끝까지 말했다.\n\"손님한테 그게 무슨 태도야?\"",
-            "폭언에 폭행까지 해 놓고 서비스가 별로란다.\n별점 1점. 인간성은 0점.\n다음 근무에선 반드시 살아서 퇴근하자."
+            "참는 게 최선이라고 배운 밤이었다.\n오늘은 내 몸이 먼저 접혔다.",
+            "진열대가 넘어가고 유리가 깨지는 동안에도\n그 사람은 끝까지 이렇게 말했다.\n\"손님한테 그게 무슨 태도야?\"",
+            "맞은 사람이 먼저 사과하는 게 이상하다는 걸\n쓰러지고 나서야 알았다.\n다음엔 참지 말고, 먼저 신고하자."
         };
 
         [Header("Ending")]
         [SerializeField, TextArea(2, 6)] private string[] _ending =
         {
-            "24:00. 퇴근.\n\"야! 손님 아직 있잖아!\"\n그래서요. 저는 이제 없는데요.",
-            "진열대 뒤집기, 벽돌 던지기, 고성방가.\n오늘의 진상 종합선물세트는 여기까지.\n저런 짓은 고객의 권리가 아니라 민폐다.",
-            "손님은 왕?\n남의 일터에서 폭언하고 폭행하는 왕은 필요 없다.\n알바도 사람이다. 그리고 지금은 퇴근한 사람이다."
+            "24:00. 교대 시간이다.\n\"야, 손님 아직 있잖아!\"\n계산은 다음 근무자가 합니다. 저는 퇴근이고요.",
+            "오늘 누른 112는 가게에 미안한 일이 아니었다.\n손님 응대하는 사람을 보호하는 건\n원래 일 시킨 쪽의 의무라고 법에 적혀 있다.",
+            "손님은 왕이 아니다. 그냥 손님이다.\n알바도 을이 아니다. 일하는 사람이다.\n내일도 같은 시간에, 무사히 출근하겠습니다."
         };
 
         public float ShiftDurationSeconds => Mathf.Max(1f, _shiftDurationSeconds);
@@ -47,6 +46,7 @@ namespace CWH.GameFlow
         public float CharactersPerSecond => Mathf.Max(1f, _charactersPerSecond);
         public float CheckoutDurationSeconds => Mathf.Max(2f, _checkoutDurationSeconds);
         public string[] Opening => _opening;
+        public Texture2D OpeningApplication => _openingApplication;
         public string[] Death => _death;
         public string[] Ending => _ending;
         public Sprite ClockIcon

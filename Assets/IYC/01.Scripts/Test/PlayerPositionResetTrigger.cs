@@ -10,17 +10,33 @@ namespace Branches.CWH.Scripts.Player.Test
 
         private void OnTriggerEnter(Collider col)
         {
-            CharacterController controller = col.GetComponent<CharacterController>();
-            Debug.Assert(controller != null, $"부딧힌 오브젝트의 CharacterController가 존재하지 않습니다.");
+            CharacterController controller = col.GetComponentInParent<CharacterController>();
             if (controller != null)
             {
+                if (controller.TryGetComponent<global::CWH.Player.PlayerFallRecovery>(out var recovery))
+                {
+                    recovery.RaiseToHeight(_resetPosition.y);
+                    return;
+                }
+                Vector3 position = controller.transform.position;
+                position.y = Mathf.Max(position.y, _resetPosition.y);
+                bool wasEnabled = controller.enabled;
                 controller.enabled = false;
-                col.transform.position = _resetPosition;
-                controller.enabled = true;
+                controller.transform.position = position;
+                controller.enabled = wasEnabled;
             }
             else if (col != null)
             {
-                col.transform.position = _resetPosition;
+                Transform target = col.attachedRigidbody != null ? col.attachedRigidbody.transform : col.transform;
+                Vector3 position = target.position;
+                position.y = Mathf.Max(position.y, _resetPosition.y);
+                target.position = position;
+                if (col.attachedRigidbody != null)
+                {
+                    Vector3 velocity = col.attachedRigidbody.linearVelocity;
+                    velocity.y = 0f;
+                    col.attachedRigidbody.linearVelocity = velocity;
+                }
             }
         }
 

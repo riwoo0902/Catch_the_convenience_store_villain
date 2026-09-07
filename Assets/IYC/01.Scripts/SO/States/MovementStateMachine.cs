@@ -68,6 +68,13 @@ namespace CWH.Player.States
                 moveInput: _context.Input.MoveAxis);
         }
 
+        public void ResetVerticalMotion()
+        {
+            _context.Velocity.y = 0f;
+            _context.AirborneTime = 0f;
+            _context.JumpBufferTimer = 0f;
+        }
+
         private void RaiseEvent(MovementEventType eventType) => OnMovementEvent?.Invoke(eventType);
     }
 }
