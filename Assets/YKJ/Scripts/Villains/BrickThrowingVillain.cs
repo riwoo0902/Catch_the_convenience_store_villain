@@ -209,12 +209,36 @@ namespace Villains
             Vector3 desiredVelocity = _navMeshAgent.desiredVelocity;
             navVelocity = desiredVelocity.sqrMagnitude > 0.001f
                 ? Vector3.ClampMagnitude(desiredVelocity, speed)
-                : (destination - transform.position).normalized * speed;
+                : BuildSteeringVelocity(destinationHit.position, speed);
 
             if (navVelocity.sqrMagnitude > 0.001f)
                 RotateTo(navVelocity);
 
             return true;
+        }
+
+        private Vector3 BuildSteeringVelocity(Vector3 destination, float speed)
+        {
+            if (_navMeshAgent != null && !_navMeshAgent.pathPending)
+            {
+                Vector3 toSteeringTarget = _navMeshAgent.steeringTarget - transform.position;
+                toSteeringTarget.y = 0f;
+                if (toSteeringTarget.sqrMagnitude > 0.001f)
+                {
+                    return Vector3.ClampMagnitude(toSteeringTarget.normalized * speed, speed);
+                }
+            }
+
+            if (_isFleeing)
+            {
+                return Vector3.zero;
+            }
+
+            Vector3 toDestination = destination - transform.position;
+            toDestination.y = 0f;
+            return toDestination.sqrMagnitude > 0.001f
+                ? Vector3.ClampMagnitude(toDestination.normalized * speed, speed)
+                : Vector3.zero;
         }
 
         private void MoveWithGravity(Vector3 horizontalVelocity)

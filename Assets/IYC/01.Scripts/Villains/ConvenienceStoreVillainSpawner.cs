@@ -30,6 +30,7 @@ namespace CWH.Villains
         private Transform[] _roamPoints = new Transform[0];
 
         public static event System.Action<string> VillainEnteredStore;
+        public static event System.Action VillainBecameAngry;
 
         private enum SpawnKind
         {
@@ -92,6 +93,8 @@ namespace CWH.Villains
 
         public static void RequestAllVillainsFlee()
         {
+            ConvenienceStoreNavMeshBootstrapper.EnsureBuiltForActiveScene();
+
             global::Villains.BrickVillain[] fsmVillains = FindObjectsByType<global::Villains.BrickVillain>(
                 FindObjectsInactive.Exclude,
                 FindObjectsSortMode.None);
@@ -128,6 +131,11 @@ namespace CWH.Villains
         public static void NotifyVillainEnteredStore(string villainName)
         {
             VillainEnteredStore?.Invoke(string.IsNullOrWhiteSpace(villainName) ? "진상" : villainName);
+        }
+
+        public static void NotifyVillainBecameAngry()
+        {
+            VillainBecameAngry?.Invoke();
         }
 
         private void Awake()

@@ -1,5 +1,6 @@
 using UnityEngine;
 using UnityEngine.AI;
+using Villains.Animation;
 using Villains.Data;
 using Villains.Projectiles;
 using Villains.Visuals;
@@ -21,6 +22,8 @@ namespace CWH.Villains
         private CharacterController _controller;
         private NavMeshAgent _navMeshAgent;
         private GroundVisualAnchor _groundVisualAnchor;
+        private PoliceTargetMarker _policeTargetMarker;
+        private VillainAnimationEventRelay _animationEvents;
         private Animator _animator;
         private Vector3 _insideDoorPosition;
         private Vector3 _outsideDoorPosition;
@@ -42,6 +45,7 @@ namespace CWH.Villains
         private bool _reachedInsideExitWaypoint;
         private bool _hasPendingThrow;
         private bool _entryAnnounced;
+        private bool _angerAnnounced;
 
         public bool IsFleeing => _isFleeing;
 
@@ -61,12 +65,15 @@ namespace CWH.Villains
             _isEntering = enterFromOutside;
             _mischiefDelay = Mathf.Max(0f, mischiefDelay);
             _entryAnnounced = false;
+            _angerAnnounced = false;
             _isRoaming = !enterFromOutside || _mischiefDelay > 0f;
             _mischiefStartTime = enterFromOutside
                 ? float.PositiveInfinity
                 : Time.time + _mischiefDelay;
             _roamPoints = roamPoints ?? new Transform[0];
             _nextThrowTime = Time.time + 0.8f;
+            _policeTargetMarker = EnsurePoliceTargetMarker();
+            _policeTargetMarker.SetWanted(false);
 
             _controller = GetComponent<CharacterController>();
             if (_controller == null)
@@ -100,6 +107,7 @@ namespace CWH.Villains
                 _animator.runtimeAnimatorController = settings.AnimatorController;
             }
 
+            InstallAnimationEvents();
             PlayAnimation("Run", 0f);
         }
 
@@ -145,7 +153,7 @@ namespace CWH.Villains
             _reachedInsideExitWaypoint = FlatSqrDistance(transform.position, _outsideDoorPosition)
                                          < FlatSqrDistance(transform.position, _insideDoorPosition);
             _fleeStartedTime = Time.time;
-            PlayAnimation("Fast Run", 0.1f);
+            PlayAnimation("Run", 0.1f);
         }
 
         private void Update()
@@ -211,6 +219,10 @@ namespace CWH.Villains
                 _mischiefStartTime = Time.time + _mischiefDelay;
                 _isRoaming = _mischiefDelay > 0f;
                 AnnounceEntry();
+                if (!_isRoaming)
+                {
+                    AnnounceAnger();
+                }
                 return;
             }
 
@@ -227,6 +239,7 @@ namespace CWH.Villains
                 _hasRoamDestination = false;
                 Move(Vector3.zero);
                 PlayAnimation("Idle", 0.1f);
+                AnnounceAnger();
                 return;
             }
 
@@ -284,9 +297,11 @@ namespace CWH.Villains
             }
 
             float maxWaitTime = Mathf.Max(0.1f, throwData.maxAnimationWaitTime);
-            _pendingThrowTime = Time.time + maxWaitTime * Mathf.Clamp01(throwData.releaseNormalizedTime);
+            float throwAnimationDuration = GetAnimationDurationOrFallback("Throw", maxWaitTime);
+            float releaseDelay = throwAnimationDuration * Mathf.Clamp01(throwData.releaseNormalizedTime);
+            _pendingThrowTime = Time.time + Mathf.Clamp(releaseDelay, 0f, throwAnimationDuration * 0.95f);
             _nextThrowTime = Time.time + throwData.cooldown;
-            _animationLockedUntil = Time.time + maxWaitTime;
+            _animationLockedUntil = Time.time + throwAnimationDuration;
             _hasPendingThrow = true;
             PlayAnimation("Throw", 0.05f, true);
         }
@@ -294,6 +309,16 @@ namespace CWH.Villains
         private void UpdatePendingThrow()
         {
             if (!_hasPendingThrow || Time.time < _pendingThrowTime)
+            {
+                return;
+            }
+
+            ReleasePendingProjectile();
+        }
+
+        private void ReleasePendingProjectile()
+        {
+            if (!_hasPendingThrow)
             {
                 return;
             }
@@ -548,7 +573,7 @@ namespace CWH.Villains
 
             FaceDirection(toExit);
             Move(toExit.normalized * _settings.FleeSpeed);
-            PlayAnimation("Fast Run", 0.1f);
+            PlayAnimation("Run", 0.1f);
         }
 
         private void Move(Vector3 horizontalVelocity)
@@ -644,7 +669,7 @@ namespace CWH.Villains
             Vector3 desiredVelocity = _navMeshAgent.desiredVelocity;
             navVelocity = desiredVelocity.sqrMagnitude > 0.001f
                 ? Vector3.ClampMagnitude(desiredVelocity, speed)
-                : horizontalVelocity;
+                : BuildSteeringVelocity(destinationHit.position, speed);
 
             if (navVelocity.sqrMagnitude > 0.001f)
             {
@@ -652,6 +677,28 @@ namespace CWH.Villains
             }
 
             return true;
+        }
+
+        private Vector3 BuildSteeringVelocity(Vector3 destination, float speed)
+        {
+            if (_navMeshAgent != null && !_navMeshAgent.pathPending)
+            {
+                Vector3 toSteeringTarget = Flatten(_navMeshAgent.steeringTarget - transform.position);
+                if (toSteeringTarget.sqrMagnitude > 0.001f)
+                {
+                    return Vector3.ClampMagnitude(toSteeringTarget.normalized * speed, speed);
+                }
+            }
+
+            if (_isEntering || _isFleeing || _isRoaming)
+            {
+                return Vector3.zero;
+            }
+
+            Vector3 toDestination = Flatten(destination - transform.position);
+            return toDestination.sqrMagnitude > 0.001f
+                ? Vector3.ClampMagnitude(toDestination.normalized * speed, speed)
+                : Vector3.zero;
         }
 
         private void ConfigureNavMeshAgent(float speed)
@@ -701,6 +748,74 @@ namespace CWH.Villains
             }
         }
 
+        private void InstallAnimationEvents()
+        {
+            UninstallAnimationEvents();
+
+            if (_animator == null)
+            {
+                return;
+            }
+
+            _animationEvents = _animator.GetComponent<VillainAnimationEventRelay>();
+            if (_animationEvents == null)
+            {
+                _animationEvents = _animator.gameObject.AddComponent<VillainAnimationEventRelay>();
+            }
+
+            _animationEvents.OnThrowTrigger += HandleThrowAnimationEvent;
+            _animationEvents.OnAnimationEndTrigger += HandleThrowAnimationEndEvent;
+        }
+
+        private void UninstallAnimationEvents()
+        {
+            if (_animationEvents == null)
+            {
+                return;
+            }
+
+            _animationEvents.OnThrowTrigger -= HandleThrowAnimationEvent;
+            _animationEvents.OnAnimationEndTrigger -= HandleThrowAnimationEndEvent;
+            _animationEvents = null;
+        }
+
+        private void HandleThrowAnimationEvent()
+        {
+            ReleasePendingProjectile();
+        }
+
+        private void HandleThrowAnimationEndEvent()
+        {
+            _animationLockedUntil = Time.time;
+            if (_hasPendingThrow)
+            {
+                ReleasePendingProjectile();
+            }
+        }
+
+        private float GetAnimationDurationOrFallback(string stateName, float fallbackDuration)
+        {
+            if (_animator == null || _animator.runtimeAnimatorController == null)
+            {
+                return Mathf.Max(0.1f, fallbackDuration);
+            }
+
+            foreach (AnimationClip clip in _animator.runtimeAnimatorController.animationClips)
+            {
+                if (clip != null && clip.name == stateName)
+                {
+                    return Mathf.Max(0.1f, clip.length / Mathf.Max(0.01f, _animator.speed));
+                }
+            }
+
+            return Mathf.Max(0.1f, fallbackDuration);
+        }
+
+        private void OnDestroy()
+        {
+            UninstallAnimationEvents();
+        }
+
         private static Vector3 Flatten(Vector3 vector)
         {
             vector.y = 0f;
@@ -721,6 +836,25 @@ namespace CWH.Villains
 
             _entryAnnounced = true;
             ConvenienceStoreVillainSpawner.NotifyVillainEnteredStore(name);
+        }
+
+        private void AnnounceAnger()
+        {
+            if (_angerAnnounced)
+            {
+                return;
+            }
+
+            _angerAnnounced = true;
+            _policeTargetMarker ??= EnsurePoliceTargetMarker();
+            _policeTargetMarker.SetWanted(true);
+            ConvenienceStoreVillainSpawner.NotifyVillainBecameAngry();
+        }
+
+        private PoliceTargetMarker EnsurePoliceTargetMarker()
+        {
+            PoliceTargetMarker marker = GetComponent<PoliceTargetMarker>();
+            return marker != null ? marker : gameObject.AddComponent<PoliceTargetMarker>();
         }
 
         private bool IsProjectileTarget(Transform projectileTransform)

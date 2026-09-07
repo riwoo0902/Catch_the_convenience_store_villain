@@ -9,6 +9,7 @@ namespace CWH.Villains
     {
         private global::Villains.BrickVillain _villain;
         private VillainSpawnSettings _settings;
+        private PoliceTargetMarker _policeTargetMarker;
         private Transform[] _roamPoints = new Transform[0];
         private Vector3 _currentDestination;
         private Vector3 _entryDestination;
@@ -19,6 +20,7 @@ namespace CWH.Villains
         private bool _hasDestination;
         private bool _isEntering;
         private bool _entryAnnounced;
+        private bool _angerAnnounced;
 
         public void Configure(
             global::Villains.BrickVillain villain,
@@ -33,6 +35,9 @@ namespace CWH.Villains
             _mischiefStartTime = Time.time + _mischiefDelay;
             _configured = true;
             _entryAnnounced = false;
+            _angerAnnounced = false;
+            _policeTargetMarker = EnsurePoliceTargetMarker();
+            _policeTargetMarker.SetWanted(false);
 
             if (_villain != null)
             {
@@ -71,6 +76,8 @@ namespace CWH.Villains
 
             if (Time.time >= _mischiefStartTime)
             {
+                AnnounceAnger();
+
                 if (_villain.TargetDetector != null)
                 {
                     _villain.TargetDetector.enabled = true;
@@ -158,6 +165,25 @@ namespace CWH.Villains
 
             _entryAnnounced = true;
             ConvenienceStoreVillainSpawner.NotifyVillainEnteredStore(name);
+        }
+
+        private void AnnounceAnger()
+        {
+            if (_angerAnnounced)
+            {
+                return;
+            }
+
+            _angerAnnounced = true;
+            _policeTargetMarker ??= EnsurePoliceTargetMarker();
+            _policeTargetMarker.SetWanted(true);
+            ConvenienceStoreVillainSpawner.NotifyVillainBecameAngry();
+        }
+
+        private PoliceTargetMarker EnsurePoliceTargetMarker()
+        {
+            PoliceTargetMarker marker = GetComponent<PoliceTargetMarker>();
+            return marker != null ? marker : gameObject.AddComponent<PoliceTargetMarker>();
         }
     }
 }

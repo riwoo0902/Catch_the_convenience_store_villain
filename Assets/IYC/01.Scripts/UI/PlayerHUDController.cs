@@ -99,6 +99,7 @@ namespace CWH.Player.UI
             }
 
             ConvenienceStoreVillainSpawner.VillainEnteredStore += ShowVillainEntryAlert;
+            ConvenienceStoreVillainSpawner.VillainBecameAngry += ShowVillainAngryAlert;
             _phoneOverlay.SetActive(false);
         }
 
@@ -785,6 +786,23 @@ namespace CWH.Player.UI
             _villainAlertRoutine = StartCoroutine(ShowVillainAlertRoutine());
         }
 
+        private void ShowVillainAngryAlert()
+        {
+            if (_villainAlertPanel == null || _villainAlertText == null)
+            {
+                return;
+            }
+
+            _villainAlertText.text = "진상이 개빡쳤다!";
+
+            if (_villainAlertRoutine != null)
+            {
+                StopCoroutine(_villainAlertRoutine);
+            }
+
+            _villainAlertRoutine = StartCoroutine(ShowVillainAlertRoutine());
+        }
+
         private IEnumerator ShowVillainAlertRoutine()
         {
             _villainAlertPanel.SetActive(true);
@@ -1181,6 +1199,7 @@ namespace CWH.Player.UI
             }
 
             ConvenienceStoreVillainSpawner.VillainEnteredStore -= ShowVillainEntryAlert;
+            ConvenienceStoreVillainSpawner.VillainBecameAngry -= ShowVillainAngryAlert;
 
             HideYoutubeWebView();
             if (_youtubeWebView != null)

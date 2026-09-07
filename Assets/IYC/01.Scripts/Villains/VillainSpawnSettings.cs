@@ -23,7 +23,7 @@ namespace CWH.Villains
 
         [Header("Appearance")]
         [SerializeField, Min(0.1f)] private float _visualScale = 3f;
-        [SerializeField, Min(0.1f)] private float _policeVisualScale = 2.2f;
+        [SerializeField, Min(0.1f)] private float _policeVisualScale = 3f;
         [SerializeField] private float _policeVisualYOffset = 0.05f;
         [SerializeField, Min(0f)] private float _policeGroundClearance = 0.03f;
 
@@ -51,6 +51,7 @@ namespace CWH.Villains
         [SerializeField, Range(0f, 1f)] private float _productDisturberSpawnChance = 0.4f;
         [SerializeField, Min(0.1f)] private float _productDisturbInterval = 2.5f;
         [SerializeField, Min(0.1f)] private float _productDisturbRadius = 1.6f;
+        [SerializeField, Min(0.1f)] private float _productApproachDistance = 2.5f;
         [SerializeField] private Vector3 _productDisturbMaxPositionOffset = new Vector3(0.22f, 0.08f, 0.2f);
         [SerializeField] private Vector3 _productDisturbMaxRotationOffset = new Vector3(35f, 55f, 35f);
 
@@ -68,6 +69,7 @@ namespace CWH.Villains
         [SerializeField, Min(0.1f)] private float _policeAttackInterval = 1.15f;
         [SerializeField, Min(0f)] private float _policeAttackHitDelay = 0.35f;
         [SerializeField, Min(0.1f)] private float _policeAttackLockDuration = 0.9f;
+        [SerializeField, Min(0f)] private float _policeDespawnDelay = 2.5f;
         [SerializeField] private Vector3 _policeWeaponLocalPosition = new Vector3(0.02f, 0.04f, 0.12f);
         [SerializeField] private Vector3 _policeWeaponLocalRotation = new Vector3(15f, 90f, 80f);
         [SerializeField] private Vector3 _policeWeaponLocalScale = Vector3.one * 0.7f;
@@ -107,6 +109,7 @@ namespace CWH.Villains
         public float ProductDisturberSpawnChance => _productDisturberSpawnChance;
         public float ProductDisturbInterval => _productDisturbInterval;
         public float ProductDisturbRadius => _productDisturbRadius;
+        public float ProductApproachDistance => _productApproachDistance;
         public Vector3 ProductDisturbMaxPositionOffset => _productDisturbMaxPositionOffset;
         public Vector3 ProductDisturbMaxRotationOffset => _productDisturbMaxRotationOffset;
         public float ChefVillainSpawnChance => _chefVillainSpawnChance;
@@ -118,6 +121,7 @@ namespace CWH.Villains
         public float PoliceAttackInterval => _policeAttackInterval;
         public float PoliceAttackHitDelay => _policeAttackHitDelay;
         public float PoliceAttackLockDuration => _policeAttackLockDuration;
+        public float PoliceDespawnDelay => _policeDespawnDelay;
         public Vector3 PoliceWeaponLocalPosition => _policeWeaponLocalPosition;
         public Vector3 PoliceWeaponLocalRotation => _policeWeaponLocalRotation;
         public Vector3 PoliceWeaponLocalScale => _policeWeaponLocalScale;

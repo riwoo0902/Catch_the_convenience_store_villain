@@ -137,7 +137,7 @@ namespace Villains.Movement
             _navMeshAgent.SetDestination(destinationHit.position);
             navVelocity = _navMeshAgent.desiredVelocity.sqrMagnitude > 0.001f
                 ? Vector3.ClampMagnitude(_navMeshAgent.desiredVelocity, speed)
-                : Velocity;
+                : BuildSteeringVelocity(speed);
 
             if (navVelocity.sqrMagnitude > 0.001f)
                 FaceDirection(navVelocity);
@@ -145,6 +145,20 @@ namespace Villains.Movement
             IsArrived = !_navMeshAgent.pathPending
                         && _navMeshAgent.remainingDistance <= arriveDistance;
             return true;
+        }
+
+        private Vector3 BuildSteeringVelocity(float speed)
+        {
+            if (_navMeshAgent == null || _navMeshAgent.pathPending)
+            {
+                return Vector3.zero;
+            }
+
+            Vector3 toSteeringTarget = _navMeshAgent.steeringTarget - _ownerTransform.position;
+            toSteeringTarget.y = 0f;
+            return toSteeringTarget.sqrMagnitude > 0.001f
+                ? Vector3.ClampMagnitude(toSteeringTarget.normalized * speed, speed)
+                : Vector3.zero;
         }
 
         private void MoveWithGravity(Vector3 horizontalVelocity)

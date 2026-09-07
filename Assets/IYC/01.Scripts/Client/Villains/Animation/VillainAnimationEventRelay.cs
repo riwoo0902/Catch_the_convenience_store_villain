@@ -18,6 +18,11 @@ namespace Villains.Animation
         public void OnThrow() => OnThrowTrigger?.Invoke();
         public void FireProjectile() => OnThrowTrigger?.Invoke();
         public void DamageCastTrigger() => OnThrowTrigger?.Invoke();
+        public void Hit() => OnThrowTrigger?.Invoke();
+        public void OnHit() => OnThrowTrigger?.Invoke();
+        public void Attack() => OnThrowTrigger?.Invoke();
+        public void OnAttack() => OnThrowTrigger?.Invoke();
+        public void AttackHit() => OnThrowTrigger?.Invoke();
 
         public void AnimationEnd() => OnAnimationEndTrigger?.Invoke();
         public void OnAnimationEnd() => OnAnimationEndTrigger?.Invoke();

@@ -1,10 +1,36 @@
 using UnityEngine;
 using UnityEngine.AI;
 using UnityEngine.SceneManagement;
+using Villains.Animation;
 using Villains.Visuals;
 
 namespace CWH.Villains
 {
+    [DisallowMultipleComponent]
+    public sealed class PoliceTargetMarker : MonoBehaviour
+    {
+        [SerializeField] private bool _isWanted;
+        [SerializeField] private bool _isHandledByPolice;
+
+        public bool IsPoliceTarget => _isWanted && !_isHandledByPolice && gameObject.activeInHierarchy;
+
+        public void SetWanted(bool isWanted)
+        {
+            if (_isHandledByPolice)
+            {
+                return;
+            }
+
+            _isWanted = isWanted;
+        }
+
+        public void MarkHandledByPolice()
+        {
+            _isHandledByPolice = true;
+            _isWanted = false;
+        }
+    }
+
     [DisallowMultipleComponent]
     public sealed class PoliceResponseController : MonoBehaviour
     {
@@ -118,7 +144,8 @@ namespace CWH.Villains
                 settings != null ? settings.PoliceAttackRange : 2f,
                 settings != null ? settings.PoliceAttackInterval : 1.15f,
                 settings != null ? settings.PoliceAttackHitDelay : 0.35f,
-                settings != null ? settings.PoliceAttackLockDuration : 0.9f);
+                settings != null ? settings.PoliceAttackLockDuration : 0.9f,
+                settings != null ? settings.PoliceDespawnDelay : 2.5f);
             _activePolice.RetargetClosestVillain();
         }
 
@@ -242,6 +269,7 @@ namespace CWH.Villains
         private CharacterController _controller;
         private NavMeshAgent _navMeshAgent;
         private GroundVisualAnchor _groundVisualAnchor;
+        private VillainAnimationEventRelay _animationEvents;
         private Transform _visualRoot;
         private Transform _weaponRoot;
         private Animator _animator;
@@ -255,6 +283,7 @@ namespace CWH.Villains
         private float _attackInterval;
         private float _attackHitDelay;
         private float _attackLockDuration;
+        private float _despawnDelay;
         private float _groundClearance;
         private float _arrivedTime;
         private float _nextAttackTime;
@@ -263,6 +292,8 @@ namespace CWH.Villains
         private bool _arrived;
         private bool _isAttacking;
         private bool _hasPendingHit;
+        private bool _attackAnimationEnded;
+        private bool _isReturningToExit;
 
         public static GameObject Create(
             Vector3 position,
@@ -319,11 +350,14 @@ namespace CWH.Villains
             navMeshAgent.updatePosition = false;
             navMeshAgent.updateRotation = false;
 
-            Animator animator = visual != null ? visual.GetComponent<Animator>() : null;
+            Animator animator = visual != null ? visual.GetComponentInChildren<Animator>(true) : null;
             if (animator != null)
             {
-                animator.runtimeAnimatorController = animatorController;
-                animator.applyRootMotion = false;
+                foreach (Animator childAnimator in visual.GetComponentsInChildren<Animator>(true))
+                {
+                    childAnimator.runtimeAnimatorController = animatorController;
+                    childAnimator.applyRootMotion = false;
+                }
             }
 
             RuntimePoliceOfficer officer = root.GetComponent<RuntimePoliceOfficer>();
@@ -360,11 +394,13 @@ namespace CWH.Villains
             float attackRange,
             float attackInterval,
             float attackHitDelay,
-            float attackLockDuration)
+            float attackLockDuration,
+            float despawnDelay)
         {
             _controller = GetComponent<CharacterController>();
             _navMeshAgent = GetComponent<NavMeshAgent>();
             _animator = GetComponentInChildren<Animator>();
+            InstallAnimationEvents();
             InstallGroundAnchor();
             _destination = destination;
             _runSpeed = runSpeed;
@@ -373,6 +409,8 @@ namespace CWH.Villains
             _attackInterval = attackInterval;
             _attackHitDelay = attackHitDelay;
             _attackLockDuration = attackLockDuration;
+            _despawnDelay = despawnDelay;
+            _isReturningToExit = false;
             WarpToNearestNavMesh();
         }
 
@@ -381,11 +419,17 @@ namespace CWH.Villains
             _destination = SampleNavMeshPosition(destination, 4f, out Vector3 sampledDestination)
                 ? sampledDestination
                 : destination;
+            _isReturningToExit = false;
             _arrived = false;
         }
 
         public void RetargetClosestVillain()
         {
+            if (_isReturningToExit)
+            {
+                return;
+            }
+
             _target = FindClosestVillain(transform.position);
         }
 
@@ -403,6 +447,12 @@ namespace CWH.Villains
             if (_isAttacking)
             {
                 UpdateAttack();
+                return;
+            }
+
+            if (_isReturningToExit)
+            {
+                UpdateArrival();
                 return;
             }
 
@@ -455,9 +505,12 @@ namespace CWH.Villains
         {
             _isAttacking = true;
             _hasPendingHit = true;
+            _attackAnimationEnded = false;
             _attackStartedTime = Time.time;
-            _pendingHitTime = Time.time + _attackHitDelay;
-            _nextAttackTime = Time.time + _attackInterval;
+            float attackDuration = GetAnimationDurationOrFallback("Standing Melee Attack Downward", _attackLockDuration);
+            float hitDelay = Mathf.Clamp(_attackHitDelay, 0f, Mathf.Max(0.01f, attackDuration * 0.95f));
+            _pendingHitTime = Time.time + hitDelay;
+            _nextAttackTime = Time.time + Mathf.Max(_attackInterval, attackDuration);
             PlayAnimation("Standing Melee Attack Downward", true);
         }
 
@@ -470,14 +523,27 @@ namespace CWH.Villains
 
             if (_hasPendingHit && Time.time >= _pendingHitTime)
             {
-                _hasPendingHit = false;
-                SuppressTarget(_target);
-                _target = null;
+                ApplyPendingAttackHit();
             }
 
-            if (Time.time >= _attackStartedTime + _attackLockDuration)
+            float attackDuration = GetAnimationDurationOrFallback("Standing Melee Attack Downward", _attackLockDuration);
+            if (_attackAnimationEnded || Time.time >= _attackStartedTime + attackDuration)
             {
                 _isAttacking = false;
+            }
+        }
+
+        private void BeginReturnToExit()
+        {
+            _target = null;
+            _isAttacking = false;
+            _hasPendingHit = false;
+            _isReturningToExit = true;
+            _arrived = false;
+
+            if (SampleNavMeshPosition(_destination, 4f, out Vector3 sampledDestination))
+            {
+                _destination = sampledDestination;
             }
         }
 
@@ -493,7 +559,7 @@ namespace CWH.Villains
                 }
 
                 AnimateIdle();
-                if (Time.time >= _arrivedTime + 8f)
+                if (Time.time >= _arrivedTime + _despawnDelay)
                 {
                     Destroy(gameObject);
                 }
@@ -575,7 +641,7 @@ namespace CWH.Villains
             Vector3 desiredVelocity = _navMeshAgent.desiredVelocity;
             navVelocity = desiredVelocity.sqrMagnitude > 0.001f
                 ? Vector3.ClampMagnitude(desiredVelocity, speed)
-                : Vector3.ClampMagnitude(Flatten(navDestination - transform.position), speed);
+                : BuildSteeringVelocity(navDestination, speed);
 
             if (navVelocity.sqrMagnitude > 0.001f)
             {
@@ -583,6 +649,23 @@ namespace CWH.Villains
             }
 
             return true;
+        }
+
+        private Vector3 BuildSteeringVelocity(Vector3 destination, float speed)
+        {
+            if (_navMeshAgent != null && !_navMeshAgent.pathPending)
+            {
+                Vector3 toSteeringTarget = Flatten(_navMeshAgent.steeringTarget - transform.position);
+                if (toSteeringTarget.sqrMagnitude > 0.001f)
+                {
+                    return Vector3.ClampMagnitude(toSteeringTarget.normalized * speed, speed);
+                }
+            }
+
+            Vector3 toDestination = Flatten(destination - transform.position);
+            return toDestination.sqrMagnitude > 0.001f
+                ? Vector3.ClampMagnitude(toDestination.normalized * speed, speed)
+                : Vector3.zero;
         }
 
         private bool WarpToNearestNavMesh()
@@ -734,6 +817,88 @@ namespace CWH.Villains
             _groundVisualAnchor.Configure(_visualRoot, _weaponRoot, _groundClearance);
         }
 
+        private void InstallAnimationEvents()
+        {
+            UninstallAnimationEvents();
+
+            if (_animator == null)
+            {
+                return;
+            }
+
+            _animationEvents = _animator.GetComponent<VillainAnimationEventRelay>();
+            if (_animationEvents == null)
+            {
+                _animationEvents = _animator.gameObject.AddComponent<VillainAnimationEventRelay>();
+            }
+
+            _animationEvents.OnThrowTrigger += HandleAttackHitTrigger;
+            _animationEvents.OnAnimationEndTrigger += HandleAttackAnimationEndTrigger;
+        }
+
+        private void UninstallAnimationEvents()
+        {
+            if (_animationEvents == null)
+            {
+                return;
+            }
+
+            _animationEvents.OnThrowTrigger -= HandleAttackHitTrigger;
+            _animationEvents.OnAnimationEndTrigger -= HandleAttackAnimationEndTrigger;
+            _animationEvents = null;
+        }
+
+        private void HandleAttackHitTrigger()
+        {
+            ApplyPendingAttackHit();
+        }
+
+        private void HandleAttackAnimationEndTrigger()
+        {
+            _attackAnimationEnded = true;
+        }
+
+        private void ApplyPendingAttackHit()
+        {
+            if (!_hasPendingHit)
+            {
+                return;
+            }
+
+            _hasPendingHit = false;
+            Transform handledTarget = _target;
+            if (IsValidTarget(handledTarget))
+            {
+                MarkTargetHandledByPolice(handledTarget);
+                SuppressTarget(handledTarget);
+            }
+
+            BeginReturnToExit();
+        }
+
+        private float GetAnimationDurationOrFallback(string stateName, float fallbackDuration)
+        {
+            if (_animator == null || _animator.runtimeAnimatorController == null)
+            {
+                return Mathf.Max(0.1f, fallbackDuration);
+            }
+
+            foreach (AnimationClip clip in _animator.runtimeAnimatorController.animationClips)
+            {
+                if (clip != null && clip.name == stateName)
+                {
+                    return Mathf.Max(0.1f, clip.length / Mathf.Max(0.01f, _animator.speed));
+                }
+            }
+
+            return Mathf.Max(0.1f, fallbackDuration);
+        }
+
+        private void OnDestroy()
+        {
+            UninstallAnimationEvents();
+        }
+
         private void BuildFallbackVisuals()
         {
             _visualRoot = new GameObject("Visual").transform;
@@ -821,7 +986,7 @@ namespace CWH.Villains
         {
             if (_animator != null)
             {
-                PlayAnimation("Fast Run");
+                PlayFirstAvailableAnimation("Run", "Fast Run");
                 return;
             }
 
@@ -865,6 +1030,18 @@ namespace CWH.Villains
             _animator.CrossFadeInFixedTime(stateHash, 0.08f);
         }
 
+        private void PlayFirstAvailableAnimation(string preferredStateName, string fallbackStateName)
+        {
+            int preferredHash = Animator.StringToHash(preferredStateName);
+            if (_animator.HasState(0, preferredHash))
+            {
+                PlayAnimation(preferredStateName);
+                return;
+            }
+
+            PlayAnimation(fallbackStateName);
+        }
+
         private static Transform FindClosestVillain(Vector3 origin)
         {
             Transform closest = null;
@@ -888,6 +1065,12 @@ namespace CWH.Villains
                     continue;
                 }
 
+                PoliceTargetMarker marker = target.GetComponentInParent<PoliceTargetMarker>();
+                if (marker == null || !marker.IsPoliceTarget)
+                {
+                    continue;
+                }
+
                 float sqrDistance = (target.transform.position - origin).sqrMagnitude;
                 if (sqrDistance >= closestSqrDistance)
                 {
@@ -901,7 +1084,21 @@ namespace CWH.Villains
 
         private static bool IsValidTarget(Transform target)
         {
-            return target != null && target.gameObject.activeInHierarchy;
+            if (target == null || !target.gameObject.activeInHierarchy)
+            {
+                return false;
+            }
+
+            PoliceTargetMarker marker = target.GetComponentInParent<PoliceTargetMarker>();
+            return marker != null && marker.IsPoliceTarget;
+        }
+
+        private static void MarkTargetHandledByPolice(Transform target)
+        {
+            PoliceTargetMarker marker = target != null
+                ? target.GetComponentInParent<PoliceTargetMarker>()
+                : null;
+            marker?.MarkHandledByPolice();
         }
 
         private static void SuppressTarget(Transform target)
